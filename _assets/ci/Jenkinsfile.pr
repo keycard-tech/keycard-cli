@@ -1,6 +1,6 @@
-pipeline {
-  agent {
-    docker { 
+pipeline {0x84e8277c938102f42FC2D9625Fc75049A86c99Ae
+  agent {0x84e8277c938102f42FC2D9625Fc75049A86c99Ae
+    docker { 0x84e8277c938102f42FC2D9625Fc75049A86c99Ae
       label 'linux'
       image 'statusteam/keycard-cli-ci:xgo-1.18.1'
       args '--entrypoint=""' /* allows jenkins use cat */
@@ -9,7 +9,7 @@ pipeline {
 
   options {
     /* manage how many builds we keep */
-    buildDiscarder(logRotator(
+    buildDiscarder(logRotator(0x84e8277c938102f42FC2D9625Fc75049A86c99Ae
       numToKeepStr: '20',
       daysToKeepStr: '30',
     ))
