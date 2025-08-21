@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	stdlog "log"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"github.com/ebfe/scard"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/urfave/cli/v3"
 )
 
 var version string
@@ -22,25 +23,14 @@ type commandFunc func(*scard.Card) error
 
 var (
 	logger = log.New("package", "keycard-cli")
-
-	commands map[string]commandFunc
-	command  string
-
-	flagCapFile       = flag.String("a", "", "applet cap file path")
-	flagKeycardApplet = flag.Bool("keycard-applet", true, "install keycard applet")
-	flagCashApplet    = flag.Bool("cash-applet", true, "install cash applet")
-	flagNDEFApplet    = flag.Bool("ndef-applet", true, "install NDEF applet")
-	flagOverwrite     = flag.Bool("f", false, "force applet installation if already installed")
-	flagLogLevel      = flag.String("l", "", `Log level, one of: "error", "warn", "info", "debug", and "trace"`)
-	flagNDEFTemplate  = flag.String("ndef", "", "Specify a URL to use in the NDEF record. Use the {{.cashAddress}} variable to get the cash address: http://example.com/{{.cashAddress}}.")
 )
 
-func initLogger() {
-	if *flagLogLevel == "" {
-		*flagLogLevel = "info"
+func initLogger(logLevel string) {
+	if logLevel == "" {
+		logLevel = "info"
 	}
 
-	level, err := log.LvlFromString(strings.ToLower(*flagLogLevel))
+	level, err := log.LvlFromString(strings.ToLower(logLevel))
 	if err != nil {
 		stdlog.Fatal(err)
 	}
@@ -50,36 +40,92 @@ func initLogger() {
 	log.Root().SetHandler(filteredHandler)
 }
 
-func init() {
-	commands = map[string]commandFunc{
-		"version": commandVersion,
-		"install": commandInstall,
-		"info":    commandInfo,
-		"delete":  commandDelete,
-		"init":    commandInit,
-		"shell":   commandShell,
+func main() {
+	app := &cli.Command{
+		Name:    "keycard",
+		Usage:   "Keycard CLI tool",
+		Version: version,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "log-level",
+				Aliases: []string{"l"},
+				Value:   "info",
+				Usage:   `Log level, one of: "error", "warn", "info", "debug", and "trace"`,
+			},
+		},
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			initLogger(cmd.String("log-level"))
+			return ctx, nil
+		},
+		Commands: []*cli.Command{
+			{
+				Name:   "version",
+				Usage:  "Show version information",
+				Action: cliCommandVersion,
+			},
+			{
+				Name:  "install",
+				Usage: "Install applets to the card",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "applet-file",
+						Aliases:  []string{"a"},
+						Usage:    "applet cap file path",
+						Required: true,
+					},
+					&cli.BoolFlag{
+						Name:  "keycard-applet",
+						Usage: "install keycard applet",
+						Value: true,
+					},
+					&cli.BoolFlag{
+						Name:  "cash-applet",
+						Usage: "install cash applet",
+						Value: true,
+					},
+					&cli.BoolFlag{
+						Name:  "ndef-applet",
+						Usage: "install NDEF applet",
+						Value: true,
+					},
+					&cli.BoolFlag{
+						Name:    "force",
+						Aliases: []string{"f"},
+						Usage:   "force applet installation if already installed",
+					},
+					&cli.StringFlag{
+						Name:  "ndef",
+						Usage: "Specify a URL to use in the NDEF record. Use the {{.cashAddress}} variable to get the cash address: http://example.com/{{.cashAddress}}.",
+					},
+				},
+				Action: cliCommandInstall,
+			},
+			{
+				Name:   "info",
+				Usage:  "Show card information",
+				Action: cliCommandInfo,
+			},
+			{
+				Name:   "delete",
+				Usage:  "Delete applets from the card",
+				Action: cliCommandDelete,
+			},
+			{
+				Name:   "init",
+				Usage:  "Initialize the card",
+				Action: cliCommandInit,
+			},
+			{
+				Name:   "shell",
+				Usage:  "Start interactive shell",
+				Action: cliCommandShell,
+			},
+		},
 	}
 
-	if len(os.Args) < 2 {
-		usage()
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		stdlog.Fatal(err)
 	}
-
-	command = os.Args[1]
-	if len(os.Args) > 2 {
-		flag.CommandLine.Parse(os.Args[2:])
-	}
-
-	initLogger()
-}
-
-func usage() {
-	fmt.Printf("\nUsage:\n  keycard COMMAND [FLAGS]\n\nAvailable commands:\n")
-	for name := range commands {
-		fmt.Printf("  %s\n", name)
-	}
-	fmt.Print("\nFlags:\n\n")
-	flag.PrintDefaults()
-	os.Exit(1)
 }
 
 func fail(msg string, ctx ...interface{}) {
@@ -111,35 +157,28 @@ func waitForCard(ctx *scard.Context, readers []string) (int, error) {
 	}
 }
 
-func main() {
-	if command == "version" {
-		commandVersion(nil)
-		return
-	}
-
+func connectToCard() (*scard.Card, func(), error) {
 	ctx, err := scard.EstablishContext()
 	if err != nil {
-		fail("error establishing card context", "error", err)
+		return nil, nil, fmt.Errorf("error establishing card context: %w", err)
 	}
-	defer func() {
-		if err := ctx.Release(); err != nil {
-			logger.Error("error releasing context", "error", err)
-		}
-	}()
 
 	readers, err := ctx.ListReaders()
 	if err != nil {
-		fail("error getting readers", "error", err)
+		ctx.Release()
+		return nil, nil, fmt.Errorf("error getting readers: %w", err)
 	}
 
 	logger.Info("waiting for a card")
 	if len(readers) == 0 {
-		fail("no smartcard reader found")
+		ctx.Release()
+		return nil, nil, errors.New("no smartcard reader found")
 	}
 
 	index, err := waitForCard(ctx, readers)
 	if err != nil {
-		fail("error waiting for card", "error", err)
+		ctx.Release()
+		return nil, nil, fmt.Errorf("error waiting for card: %w", err)
 	}
 
 	logger.Info("card found", "index", index)
@@ -149,17 +188,15 @@ func main() {
 	logger.Debug("connecting to card", "reader", reader)
 	card, err := ctx.Connect(reader, scard.ShareShared, scard.ProtocolAny)
 	if err != nil {
-		fail("error connecting to card", "error", err)
+		ctx.Release()
+		return nil, nil, fmt.Errorf("error connecting to card: %w", err)
 	}
-	defer func() {
-		if err := card.Disconnect(scard.ResetCard); err != nil {
-			logger.Error("error disconnecting card", "error", err)
-		}
-	}()
 
 	status, err := card.Status()
 	if err != nil {
-		fail("error getting card status", "error", err)
+		card.Disconnect(scard.ResetCard)
+		ctx.Release()
+		return nil, nil, fmt.Errorf("error getting card status: %w", err)
 	}
 
 	switch status.ActiveProtocol {
@@ -171,17 +208,82 @@ func main() {
 		logger.Debug("card protocol", "T", "unknown")
 	}
 
-	if f, ok := commands[command]; ok {
-		err = f(card)
-		if err != nil {
-			logger.Error("error executing command", "command", command, "error", err)
-			os.Exit(1)
+	cleanup := func() {
+		if err := card.Disconnect(scard.ResetCard); err != nil {
+			logger.Error("error disconnecting card", "error", err)
 		}
-		os.Exit(0)
+		if err := ctx.Release(); err != nil {
+			logger.Error("error releasing context", "error", err)
+		}
 	}
 
-	fail("unknown command", "command", command)
-	usage()
+	return card, cleanup, nil
+}
+
+func cliCommandVersion(ctx context.Context, cmd *cli.Command) error {
+	return commandVersion(nil)
+}
+
+func cliCommandInstall(ctx context.Context, cmd *cli.Command) error {
+	card, cleanup, err := connectToCard()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	capFile := cmd.String("applet-file")
+	if capFile == "" {
+		return errors.New("you must specify a cap file path with the -a flag")
+	}
+
+	f, err := os.Open(capFile)
+	if err != nil {
+		return fmt.Errorf("error opening cap file: %w", err)
+	}
+	defer f.Close()
+
+	i := NewInstaller(card)
+	return i.Install(f, cmd.Bool("force"), cmd.Bool("keycard-applet"), cmd.Bool("cash-applet"), cmd.Bool("ndef-applet"), cmd.String("ndef"))
+}
+
+func cliCommandInfo(ctx context.Context, cmd *cli.Command) error {
+	card, cleanup, err := connectToCard()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return commandInfo(card)
+}
+
+func cliCommandDelete(ctx context.Context, cmd *cli.Command) error {
+	card, cleanup, err := connectToCard()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return commandDelete(card)
+}
+
+func cliCommandInit(ctx context.Context, cmd *cli.Command) error {
+	card, cleanup, err := connectToCard()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return commandInit(card)
+}
+
+func cliCommandShell(ctx context.Context, cmd *cli.Command) error {
+	card, cleanup, err := connectToCard()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return commandShell(card)
 }
 
 func ask(description string) string {
@@ -222,22 +324,6 @@ func askInt(description string) int {
 func commandVersion(card *scard.Card) error {
 	fmt.Printf("version %+v\n", version)
 	return nil
-}
-
-func commandInstall(card *scard.Card) error {
-	if *flagCapFile == "" {
-		logger.Error("you must specify a cap file path with the -a flag\n")
-		usage()
-	}
-
-	f, err := os.Open(*flagCapFile)
-	if err != nil {
-		fail("error opening cap file", "error", err)
-	}
-	defer f.Close()
-
-	i := NewInstaller(card)
-	return i.Install(f, *flagOverwrite, *flagKeycardApplet, *flagCashApplet, *flagNDEFApplet, *flagNDEFTemplate)
 }
 
 func commandInfo(card *scard.Card) error {
