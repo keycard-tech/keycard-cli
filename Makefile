@@ -7,7 +7,8 @@ GOBIN = $(dir $(realpath $(firstword $(MAKEFILE_LIST))))build/bin
 PROJECT_NAME=keycard-cli
 BIN_NAME=keycard
 
-VERSION = $(shell cat VERSION)
+# Get version from git tags, fallback to git describe if no tags
+VERSION = $(git describe --tags --exact-match 2>/dev/null || git describe --tags --always --dirty)
 
 export GITHUB_USER ?= status-im
 export GITHUB_REPO ?= $(PROJECT_NAME)

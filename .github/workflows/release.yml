@@ -1,0 +1,42 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - '*'
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Get version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        OUTPUT_NAME=keycard-${{ matrix.goos }}-${{ matrix.goarch }}
+        go build -o $OUTPUT_NAME -ldflags "-X main.version=${{ steps.version.outputs.VERSION }}" .
+
+    - name: Upload binaries to release
+      uses: actions/upload-artifact@v4
+      with:
+        name: keycard-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: keycard-*
