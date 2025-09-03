@@ -4,7 +4,6 @@ keycard-pair
 
 keycard-open-secure-channel
 keycard-verify-pin {{ session_pin }}
+keycard-unpair {{ session_pairing_index }}
 
 keycard-generate-key
-
-keycard-unpair {{ session_pairing_index }}

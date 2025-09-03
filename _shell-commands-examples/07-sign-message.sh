@@ -6,7 +6,8 @@ keycard-set-secrets 123456 123456789012 KeycardDefaultPairing
 keycard-pair
 keycard-open-secure-channel
 keycard-verify-pin {{ session_pin }}
-# sign a message
-keycard-sign-message hello
 # we unpair the current device so that we don't use one of the 5 available slots.
 keycard-unpair {{ session_pairing_index }}
+
+# sign a message
+keycard-sign-message hello
