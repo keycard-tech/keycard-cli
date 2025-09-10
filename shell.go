@@ -171,14 +171,19 @@ func (s *Shell) Run() error {
 	defer s.flushOut()
 
 	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
+		line, readErr := reader.ReadString('\n')
+
+		if readErr != nil && readErr != io.EOF {
 			break
 		}
 
-		err = s.evalLine(line)
+		err := s.evalLine(line)
 		if err != nil {
 			return err
+		}
+
+		if readErr == io.EOF {
+			break
 		}
 	}
 
