@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -35,82 +34,32 @@ func PinlessCommands() []*cli.Command {
 }
 
 func cmdSetPinlessPath(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("pinless signing is not available on applet version 4.0+")
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		path := cmd.String("path")
+		if err := kc.SetPinlessPath(path); err != nil {
+			return err
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	if internal.IsAppletV4Plus(kc) {
-		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	if err := kc.SetPinlessPath(path); err != nil {
-		return err
-	}
-
-	fmt.Printf("Pinless path set: %s\n", path)
-	return nil
+		fmt.Printf("Pinless path set: %s\n", path)
+		return nil
+	})
 }
 
 func cmdResetPinlessPath(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("pinless signing is not available on applet version 4.0+")
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		if err := kc.ResetPinlessPath(); err != nil {
+			return err
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	if internal.IsAppletV4Plus(kc) {
-		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	if err := kc.ResetPinlessPath(); err != nil {
-		return err
-	}
-
-	fmt.Println("Pinless path reset")
-	return nil
+		fmt.Println("Pinless path reset")
+		return nil
+	})
 }

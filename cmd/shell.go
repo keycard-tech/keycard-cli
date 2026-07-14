@@ -38,6 +38,11 @@ func ShellCommand() *cli.Command {
 				Aliases: []string{"f"},
 				Usage:   "Path to script file (reads from stdin if omitted)",
 			},
+			&cli.BoolFlag{
+				Name:    "json",
+				Aliases: []string{"j"},
+				Usage:   "Output all results as a single JSON object at the end",
+			},
 		},
 		Action: cmdShell,
 	}
@@ -57,29 +62,31 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("error opening script file: %w", err)
 		}
 		defer f.Close()
-		return runShell(card, f)
+		return runShell(card, f, cmd.Bool("json"))
 	}
 
 	fi, _ := os.Stdin.Stat()
 	if (fi.Mode() & os.ModeCharDevice) == 0 {
-		return runShell(card, os.Stdin)
+		return runShell(card, os.Stdin, cmd.Bool("json"))
 	}
 
 	return errors.New("non-interactive shell. You must pipe commands or use -f flag")
 }
 
-func runShell(card *scard.Card, input io.Reader) error {
+func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc := keycard.NewCommandSet(ch)
 	cashKC := keycard.NewCashCommandSet(ch)
 	gp := globalplatform.NewCommandSet(ch)
 
 	shell := &shellRunner{
-		ch:     ch,
-		kc:     kc,
-		cashKC: cashKC,
-		gp:     gp,
-		out:    new(bytes.Buffer),
+		ch:         ch,
+		kc:         kc,
+		cashKC:     cashKC,
+		gp:         gp,
+		out:        new(bytes.Buffer),
+		jsonOutput: jsonOutput,
+		results:    make(map[string]map[string]interface{}),
 	}
 
 	reader := bufio.NewReader(input)
@@ -104,16 +111,19 @@ func runShell(card *scard.Card, input io.Reader) error {
 	return nil
 }
 
-type shellCommand = func(args ...string) error
+type shellCommand = func(args ...string) (map[string]interface{}, error)
 
 type shellRunner struct {
-	ch       types.Channel
-	kc       *keycard.CommandSet
-	cashKC   *keycard.CashCommandSet
-	gp       *globalplatform.CommandSet
-	secrets  *keycard.Secrets
-	commands map[string]shellCommand
-	out      *bytes.Buffer
+	ch         types.Channel
+	kc         *keycard.CommandSet
+	cashKC     *keycard.CashCommandSet
+	gp         *globalplatform.CommandSet
+	secrets    *keycard.Secrets
+	commands   map[string]shellCommand
+	out        *bytes.Buffer
+	jsonOutput bool
+	results    map[string]map[string]interface{}
+	resultIdx  int
 }
 
 func (s *shellRunner) write(str string) {
@@ -121,7 +131,20 @@ func (s *shellRunner) write(str string) {
 }
 
 func (s *shellRunner) flushOut() {
+	if s.jsonOutput {
+		// Output all collected results as JSON
+		internal.PrintJSON(s.results)
+	}
 	io.Copy(os.Stdout, s.out)
+}
+
+func (s *shellRunner) recordResult(cmdName string, result map[string]interface{}) {
+	if !s.jsonOutput {
+		return
+	}
+	key := fmt.Sprintf("%s_%d", cmdName, s.resultIdx)
+	s.resultIdx++
+	s.results[key] = result
 }
 
 func (s *shellRunner) initCommands() {
@@ -185,7 +208,11 @@ func (s *shellRunner) evalLine(rawLine string) error {
 	reg := regexp.MustCompile("\\s+")
 	parts := reg.Split(line, -1)
 	if cmd, ok := s.commands[parts[0]]; ok {
-		return cmd(parts[1:]...)
+		result, err := cmd(parts[1:]...)
+		if result != nil {
+			s.recordResult(parts[0], result)
+		}
+		return err
 	}
 
 	return fmt.Errorf("command not found: %s", parts[0])
@@ -269,7 +296,7 @@ func (s *shellRunner) parseHex(str string) ([]byte, error) {
 	return hex.DecodeString(str)
 }
 
-func (s *shellRunner) writeSignatureInfo(sig *types.Signature) {
+func (s *shellRunner) writeSignatureInfo(sig *types.Signature) map[string]interface{} {
 	ethSig := append(sig.R(), sig.S()...)
 	ethSig = append(ethSig, []byte{sig.V() + 27}...)
 	ecdsaPubKey, err := crypto.UnmarshalPubkey(sig.PubKey())
@@ -284,25 +311,34 @@ func (s *shellRunner) writeSignatureInfo(sig *types.Signature) {
 	s.write(fmt.Sprintf("ETH SIGNATURE: 0x%x\n", ethSig))
 	s.write(fmt.Sprintf("PUBLIC KEY: 0x%x\n", sig.PubKey()))
 	s.write(fmt.Sprintf("ADDRESS: %s\n\n", address.String()))
+
+	return map[string]interface{}{
+		"signature_r":     "0x" + hex.EncodeToString(sig.R()),
+		"signature_s":     "0x" + hex.EncodeToString(sig.S()),
+		"signature_v":     int(sig.V()),
+		"eth_signature":   "0x" + hex.EncodeToString(ethSig),
+		"public_key":      "0x" + hex.EncodeToString(sig.PubKey()),
+		"address":         address.String(),
+	}
 }
 
 // Shell command implementations (ported from old shell.go)
-func (s *shellRunner) commandEcho(args ...string) error {
-	fmt.Printf("> %s\n", strings.Join(args, " "))
-	return nil
+func (s *shellRunner) commandEcho(args ...string) (map[string]interface{}, error) {
+	s.write(fmt.Sprintf("> %s\n", strings.Join(args, " ")))
+	return nil, nil
 }
 
-func (s *shellRunner) commandGPSendAPDU(args ...string) error {
+func (s *shellRunner) commandGPSendAPDU(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	rawCmd, err := hex.DecodeString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cmd, err := apdu.ParseCommand(rawCmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var channel types.Channel
 	if sc := s.gp.SecureChannel(); sc != nil {
@@ -312,141 +348,182 @@ func (s *shellRunner) commandGPSendAPDU(args ...string) error {
 	}
 	resp, err := channel.Send(cmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.Sw != apdu.SwOK {
-		return apdu.NewErrBadResponse(resp.Sw, "unexpected response")
+		return nil, apdu.NewErrBadResponse(resp.Sw, "unexpected response")
 	}
-	return nil
+	return map[string]interface{}{
+		"sw":   fmt.Sprintf("0x%04x", resp.Sw),
+		"data": "0x" + hex.EncodeToString(resp.Data),
+	}, nil
 }
 
-func (s *shellRunner) commandGPSelect(args ...string) error {
+func (s *shellRunner) commandGPSelect(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0, 1); err != nil {
-		return err
+		return nil, err
 	}
 	if len(args) == 0 {
-		return s.gp.Select()
+		if err := s.gp.Select(); err != nil {
+			return nil, err
+		}
+		s.write("Selected ISD\n")
+		return map[string]interface{}{"selected": "isd"}, nil
 	}
 	aid, err := hex.DecodeString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.gp.SelectAID(aid)
+	if err := s.gp.SelectAID(aid); err != nil {
+		return nil, err
+	}
+	s.write(fmt.Sprintf("Selected AID: %s\n", args[0]))
+	return map[string]interface{}{"selected_aid": args[0]}, nil
 }
 
-func (s *shellRunner) commandGPOpenSecureChannel(args ...string) error {
+func (s *shellRunner) commandGPOpenSecureChannel(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
-	return s.gp.OpenSecureChannel()
+	if err := s.gp.OpenSecureChannel(); err != nil {
+		return nil, err
+	}
+	s.write("GP secure channel opened\n")
+	return map[string]interface{}{"secure_channel": "opened"}, nil
 }
 
-func (s *shellRunner) commandGPDelete(args ...string) error {
+func (s *shellRunner) commandGPDelete(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	aid, err := hex.DecodeString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.gp.DeleteObject(aid)
+	if err := s.gp.DeleteObject(aid); err != nil {
+		return nil, err
+	}
+	s.write(fmt.Sprintf("Deleted AID: %s\n", args[0]))
+	return map[string]interface{}{"deleted_aid": args[0]}, nil
 }
 
-func (s *shellRunner) commandGPLoad(args ...string) error {
+func (s *shellRunner) commandGPLoad(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 2); err != nil {
-		return err
+		return nil, err
 	}
 	f, err := os.Open(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 	pkgAID, err := hex.DecodeString(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	callback := func(index, total int) {}
-	return s.gp.LoadPackage(f, pkgAID, callback)
+	if err := s.gp.LoadPackage(f, pkgAID, callback); err != nil {
+		return nil, err
+	}
+	s.write(fmt.Sprintf("Package loaded: %s\n", args[1]))
+	return map[string]interface{}{"package_aid": args[1], "loaded": true}, nil
 }
 
-func (s *shellRunner) commandGPInstallForInstall(args ...string) error {
+func (s *shellRunner) commandGPInstallForInstall(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 3, 4); err != nil {
-		return err
+		return nil, err
 	}
 	pkgAID, err := hex.DecodeString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	appletAID, err := hex.DecodeString(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	instanceAID, err := hex.DecodeString(args[2])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var params []byte
 	if len(args) == 4 {
 		params, err = hex.DecodeString(args[3])
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return s.gp.InstallForInstall(pkgAID, appletAID, instanceAID, params)
+	if err := s.gp.InstallForInstall(pkgAID, appletAID, instanceAID, params); err != nil {
+		return nil, err
+	}
+	s.write("Install for install complete\n")
+	return map[string]interface{}{
+		"package_aid":  args[0],
+		"applet_aid":   args[1],
+		"instance_aid": args[2],
+		"installed":    true,
+	}, nil
 }
 
-func (s *shellRunner) commandGPGetStatus(args ...string) error {
+func (s *shellRunner) commandGPGetStatus(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	cardStatus, err := s.gp.GetStatus()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.write(fmt.Sprintf("CARD STATUS: %s\n\n", cardStatus.LifeCycle()))
-	return nil
+	lifecycle := cardStatus.LifeCycle()
+	s.write(fmt.Sprintf("CARD STATUS: %s\n\n", lifecycle))
+	return map[string]interface{}{"lifecycle": lifecycle}, nil
 }
 
-func (s *shellRunner) commandKeycardInit(args ...string) error {
+func (s *shellRunner) commandKeycardInit(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if s.kc.AppInfo() == nil || !s.kc.AppInfo().Installed {
-		return errors.New("keycard applet not installed")
+		return nil, errors.New("keycard applet not installed")
 	}
 	if s.kc.AppInfo().Initialized {
-		return errors.New("card already initialized")
+		return nil, errors.New("card already initialized")
 	}
 	if s.secrets == nil {
 		secrets, err := keycard.GenerateSecrets()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		s.secrets = secrets
 	}
 	if err := s.kc.Init(s.secrets); err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("PIN: %s\n", s.secrets.Pin()))
 	s.write(fmt.Sprintf("PUK: %s\n", s.secrets.Puk()))
 	s.write(fmt.Sprintf("PAIRING PASSWORD: %s\n\n", s.secrets.PairingPass()))
-	return nil
+	return map[string]interface{}{
+		"pin":              s.secrets.Pin(),
+		"puk":              s.secrets.Puk(),
+		"pairing_password": s.secrets.PairingPass(),
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardSetSecrets(args ...string) error {
+func (s *shellRunner) commandKeycardSetSecrets(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 3); err != nil {
-		return err
+		return nil, err
 	}
 	s.secrets = keycard.NewSecrets(args[0], args[1], args[2])
-	return nil
+	return map[string]interface{}{
+		"pin":              args[0],
+		"puk":              args[1],
+		"pairing_password": args[2],
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardSelect(args ...string) error {
+func (s *shellRunner) commandKeycardSelect(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.kc.Select(); err != nil {
-		return err
+		return nil, err
 	}
 	info := s.kc.AppInfo()
 	s.write(fmt.Sprintf("Installed: %v\n", info.Installed))
@@ -454,357 +531,415 @@ func (s *shellRunner) commandKeycardSelect(args ...string) error {
 	s.write(fmt.Sprintf("Key Initialized: %v\n", len(info.KeyUID) > 0))
 	s.write(fmt.Sprintf("Version: %x\n", info.AppVersion()))
 	s.write(fmt.Sprintf("KeyUID: %x\n\n", info.KeyUID))
-	return nil
+	return map[string]interface{}{
+		"installed":     info.Installed,
+		"initialized":   info.Initialized,
+		"key_uid":       "0x" + hex.EncodeToString(info.KeyUID),
+		"app_version":   fmt.Sprintf("0x%04x", info.AppVersion()),
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardPair(args ...string) error {
+func (s *shellRunner) commandKeycardPair(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if s.secrets == nil {
-		return errors.New("cannot pair without setting secrets")
+		return nil, errors.New("cannot pair without setting secrets")
 	}
 	if err := s.kc.Pair(s.secrets.PairingPass()); err != nil {
-		return err
+		return nil, err
 	}
 	pairing := s.kc.Pairing()
 	key := pairing.Key()
 	s.write(fmt.Sprintf("PAIRING KEY: %x\n", key[:]))
 	s.write(fmt.Sprintf("PAIRING INDEX: %v\n\n", pairing.Index()))
-	return nil
+	return map[string]interface{}{
+		"pairing_key":   fmt.Sprintf("0x%x", key[:]),
+		"pairing_index": pairing.Index(),
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardUnpair(args ...string) error {
+func (s *shellRunner) commandKeycardUnpair(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	indexInt, err := strconv.ParseInt(args[0], 10, 8)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if s.secrets == nil {
-		return errors.New("cannot unpair without setting secrets")
+		return nil, errors.New("cannot unpair without setting secrets")
 	}
 	if err := s.kc.Unpair(uint8(indexInt)); err != nil {
-		return err
+		return nil, err
 	}
 	s.write("UNPAIRED\n\n")
-	return nil
+	return map[string]interface{}{"unpaired_index": int(indexInt)}, nil
 }
 
-func (s *shellRunner) commandKeycardSetPairing(args ...string) error {
+func (s *shellRunner) commandKeycardSetPairing(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 2); err != nil {
-		return err
+		return nil, err
 	}
 	key, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	index, err := strconv.ParseInt(args[1], 10, 8)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var keyArr [32]byte
 	copy(keyArr[:], key)
 	s.kc.SetPairing(types.NewPairing(keyArr, uint8(index)))
-	return nil
+	return map[string]interface{}{
+		"pairing_key":   args[0],
+		"pairing_index": int(index),
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardOpenSecureChannel(args ...string) error {
+func (s *shellRunner) commandKeycardOpenSecureChannel(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if s.kc.Pairing() == nil {
-		return errors.New("cannot open secure channel without setting pairing info")
+		return nil, errors.New("cannot open secure channel without setting pairing info")
 	}
-	return s.kc.OpenSecureChannel()
+	if err := s.kc.OpenSecureChannel(); err != nil {
+		return nil, err
+	}
+	s.write("Secure channel opened\n")
+	return map[string]interface{}{"secure_channel": "opened"}, nil
 }
 
-func (s *shellRunner) commandKeycardGetStatus(args ...string) error {
+func (s *shellRunner) commandKeycardGetStatus(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	appStatus, err := s.kc.GetStatusApplication()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keyStatus, err := s.kc.GetStatusKeyPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("STATUS - PIN RETRY COUNT: %d\n", appStatus.PinRetryCount))
 	s.write(fmt.Sprintf("STATUS - PUK RETRY COUNT: %d\n", appStatus.PUKRetryCount))
 	s.write(fmt.Sprintf("STATUS - KEY INITIALIZED: %v\n", appStatus.KeyInitialized))
 	s.write(fmt.Sprintf("STATUS - KEY PATH: %v\n\n", keyStatus.Path))
-	return nil
+	return map[string]interface{}{
+		"pin_retry_count":  appStatus.PinRetryCount,
+		"puk_retry_count":  appStatus.PUKRetryCount,
+		"key_initialized":  appStatus.KeyInitialized,
+		"key_path":         keyStatus.Path,
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardVerifyPIN(args ...string) error {
+func (s *shellRunner) commandKeycardVerifyPIN(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.VerifyPIN(args[0])
+	if err := s.kc.VerifyPIN(args[0]); err != nil {
+		return nil, err
+	}
+	s.write("PIN verified\n")
+	return map[string]interface{}{"pin_verified": true}, nil
 }
 
-func (s *shellRunner) commandKeycardChangePIN(args ...string) error {
+func (s *shellRunner) commandKeycardChangePIN(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.ChangePIN(args[0])
+	if err := s.kc.ChangePIN(args[0]); err != nil {
+		return nil, err
+	}
+	s.write("PIN changed\n")
+	return map[string]interface{}{"pin_changed": true}, nil
 }
 
-func (s *shellRunner) commandKeycardChangePUK(args ...string) error {
+func (s *shellRunner) commandKeycardChangePUK(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.ChangePUK(args[0])
+	if err := s.kc.ChangePUK(args[0]); err != nil {
+		return nil, err
+	}
+	s.write("PUK changed\n")
+	return map[string]interface{}{"puk_changed": true}, nil
 }
 
-func (s *shellRunner) commandKeycardUnblockPin(args ...string) error {
+func (s *shellRunner) commandKeycardUnblockPin(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 2); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.UnblockPIN(args[0], args[1])
+	if err := s.kc.UnblockPIN(args[0], args[1]); err != nil {
+		return nil, err
+	}
+	s.write("PIN unblocked\n")
+	return map[string]interface{}{"pin_unblocked": true}, nil
 }
 
-func (s *shellRunner) commandKeycardChangePairingSecret(args ...string) error {
+func (s *shellRunner) commandKeycardChangePairingSecret(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.ChangePairingSecret(args[0])
+	if err := s.kc.ChangePairingSecret(args[0]); err != nil {
+		return nil, err
+	}
+	s.write("Pairing secret changed\n")
+	return map[string]interface{}{"pairing_secret_changed": true}, nil
 }
 
-func (s *shellRunner) commandKeycardGenerateKey(args ...string) error {
+func (s *shellRunner) commandKeycardGenerateKey(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	appStatus, err := s.kc.GetStatusApplication()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if appStatus.KeyInitialized {
-		return errors.New("key already generated. You must delete it before creating a new one")
+		return nil, errors.New("key already generated. You must delete it before creating a new one")
 	}
 	keyUID, err := s.kc.GenerateKey()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("KEY UID %x\n\n", keyUID))
-	return nil
+	return map[string]interface{}{"key_uid": "0x" + hex.EncodeToString(keyUID)}, nil
 }
 
-func (s *shellRunner) commandKeycardRemoveKey(args ...string) error {
+func (s *shellRunner) commandKeycardRemoveKey(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.kc.RemoveKey(); err != nil {
-		return err
+		return nil, err
 	}
 	s.write("KEY REMOVED\n\n")
-	return nil
+	return map[string]interface{}{"key_removed": true}, nil
 }
 
-func (s *shellRunner) commandKeycardDeriveKey(args ...string) error {
+func (s *shellRunner) commandKeycardDeriveKey(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.DeriveKey(args[0])
+	if err := s.kc.DeriveKey(args[0]); err != nil {
+		return nil, err
+	}
+	s.write(fmt.Sprintf("Key derived at path: %s\n", args[0]))
+	return map[string]interface{}{"path": args[0], "derived": true}, nil
 }
 
-func (s *shellRunner) commandKeycardExportKeyPrivate(args ...string) error {
+func (s *shellRunner) commandKeycardExportKeyPrivate(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	path := args[0]
 	exported, err := s.kc.ExportKeyWithP2(false, false, keycard.P2ExportKeyPrivateAndPublic, path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("PRIVATE KEY: 0x%x\n", exported.PrivKey()))
 	s.write(fmt.Sprintf("PUBLIC KEY: 0x%x\n\n", exported.PubKey()))
-	return nil
+	return map[string]interface{}{
+		"private_key": "0x" + hex.EncodeToString(exported.PrivKey()),
+		"public_key":  "0x" + hex.EncodeToString(exported.PubKey()),
+		"path":        path,
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardExportKeyPublic(args ...string) error {
+func (s *shellRunner) commandKeycardExportKeyPublic(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	path := args[0]
 	exported, err := s.kc.ExportKeyWithP2(false, false, keycard.P2ExportKeyPublicOnly, path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("PUBLIC KEY: 0x%x\n\n", exported.PubKey()))
-	return nil
+	return map[string]interface{}{
+		"public_key": "0x" + hex.EncodeToString(exported.PubKey()),
+		"path":       path,
+	}, nil
 }
 
-func (s *shellRunner) commandKeycardSign(args ...string) error {
+func (s *shellRunner) commandKeycardSign(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sig, err := s.kc.Sign(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	return s.writeSignatureInfo(sig), nil
 }
 
-func (s *shellRunner) commandKeycardSignWithPath(args ...string) error {
+func (s *shellRunner) commandKeycardSignWithPath(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 2); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sig, err := s.kc.SignWithPath(data, args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	result := s.writeSignatureInfo(sig)
+	result["path"] = args[1]
+	return result, nil
 }
 
-func (s *shellRunner) commandKeycardSignMessage(args ...string) error {
+func (s *shellRunner) commandKeycardSignMessage(args ...string) (map[string]interface{}, error) {
 	if len(args) < 1 {
-		return errors.New("keycard-sign-message requires at least 1 parameter")
+		return nil, errors.New("keycard-sign-message requires at least 1 parameter")
 	}
 	originalMessage := strings.Join(args, " ")
-	hash := hashEthereumMessage(originalMessage)
+	hash := shellHashEthereumMessage(originalMessage)
 	sig, err := s.kc.Sign(hash)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	return s.writeSignatureInfo(sig), nil
 }
 
-func (s *shellRunner) commandKeycardSignPinless(args ...string) error {
+func (s *shellRunner) commandKeycardSignPinless(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sig, err := s.kc.SignPinless(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	return s.writeSignatureInfo(sig), nil
 }
 
-func (s *shellRunner) commandKeycardSignMessagePinless(args ...string) error {
+func (s *shellRunner) commandKeycardSignMessagePinless(args ...string) (map[string]interface{}, error) {
 	if len(args) < 1 {
-		return errors.New("keycard-sign-message-pinless requires at least 1 parameter")
+		return nil, errors.New("keycard-sign-message-pinless requires at least 1 parameter")
 	}
 	originalMessage := strings.Join(args, " ")
-	hash := hashEthereumMessage(originalMessage)
+	hash := shellHashEthereumMessage(originalMessage)
 	sig, err := s.kc.SignPinless(hash)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	return s.writeSignatureInfo(sig), nil
 }
 
-func (s *shellRunner) commandKeycardSetPinlessPath(args ...string) error {
+func (s *shellRunner) commandKeycardSetPinlessPath(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
-	return s.kc.SetPinlessPath(args[0])
+	if err := s.kc.SetPinlessPath(args[0]); err != nil {
+		return nil, err
+	}
+	s.write(fmt.Sprintf("Pinless path set: %s\n", args[0]))
+	return map[string]interface{}{"pinless_path": args[0]}, nil
 }
 
-func (s *shellRunner) commandKeycardGenerateMnemonic(args ...string) error {
+func (s *shellRunner) commandKeycardGenerateMnemonic(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	checksumSize, err := strconv.ParseInt(args[0], 10, 8)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	indexes, err := s.kc.GenerateMnemonic(int(checksumSize))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("MNEMONIC INDEXES %v\n\n", indexes))
-	return nil
+	return map[string]interface{}{"mnemonic_indexes": indexes}, nil
 }
 
-func (s *shellRunner) commandKeycardLoadSeed(args ...string) error {
+func (s *shellRunner) commandKeycardLoadSeed(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	seed, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keyID, err := s.kc.LoadSeed(seed)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.write(fmt.Sprintf("KEY ID %x\n\n", keyID))
-	return nil
+	return map[string]interface{}{"key_id": "0x" + hex.EncodeToString(keyID)}, nil
 }
 
-func (s *shellRunner) commandKeycardIdentify(args ...string) error {
+func (s *shellRunner) commandKeycardIdentify(args ...string) (map[string]interface{}, error) {
 	pubkey, err := s.kc.Identify()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var compareKey []byte
 	if len(args) == 1 {
 		compareKey, err = s.parseHex(args[0])
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		compareKey = pubkey
 	}
 	if !bytes.Equal(compareKey, pubkey) {
-		return errors.New("genuinity check failed")
+		return nil, errors.New("genuinity check failed")
 	}
 	s.write(fmt.Sprintf("IDENTIFICATION OK (public key: %x)\n\n", pubkey))
-	return nil
+	return map[string]interface{}{
+		"identified": true,
+		"public_key": "0x" + hex.EncodeToString(pubkey),
+	}, nil
 }
 
-func (s *shellRunner) commandCashSelect(args ...string) error {
+func (s *shellRunner) commandCashSelect(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 0); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.cashKC.Select(); err != nil {
-		return err
+		return nil, err
 	}
 	info := s.cashKC.CashApplicationInfo
 	s.write(fmt.Sprintf("Installed: %v\n", info.Installed))
 	s.write(fmt.Sprintf("PublicKey: %x\n", info.PublicKey))
 	s.write(fmt.Sprintf("Version: %x\n\n", info.Version))
-	return nil
+	return map[string]interface{}{
+		"installed":   info.Installed,
+		"public_key":  "0x" + hex.EncodeToString(info.PublicKey),
+		"version":     "0x" + hex.EncodeToString(info.Version),
+	}, nil
 }
 
-func (s *shellRunner) commandCashSign(args ...string) error {
+func (s *shellRunner) commandCashSign(args ...string) (map[string]interface{}, error) {
 	if err := s.requireArgs(args, 1); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := s.parseHex(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sig, err := s.cashKC.Sign(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	s.writeSignatureInfo(sig)
-	return nil
+	return s.writeSignatureInfo(sig), nil
 }
 
-func hashEthereumMessage(message string) []byte {
+func shellHashEthereumMessage(message string) []byte {
 	data := []byte(message)
 	if strings.HasPrefix(message, "0x") {
 		if value, err := hex.DecodeString(message[2:]); err == nil {

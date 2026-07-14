@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -85,68 +84,30 @@ func DataCommands() []*cli.Command {
 }
 
 func cmdGetData(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
 	dataType := parseDataType(cmd.String("type"))
 	if dataType < 0 {
 		return fmt.Errorf("invalid data type: %s (must be public, ndef, or cash)", cmd.String("type"))
 	}
 
-	data, err := kc.GetData(uint8(dataType))
-	if err != nil {
-		return err
-	}
+	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		data, err := kc.GetData(uint8(dataType))
+		if err != nil {
+			return err
+		}
 
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"type": cmd.String("type"),
-			"data": "0x" + hex.EncodeToString(data),
-		})
-	}
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"type": cmd.String("type"),
+				"data": "0x" + hex.EncodeToString(data),
+			})
+		}
 
-	fmt.Printf("Data (%s): 0x%x\n", cmd.String("type"), data)
-	return nil
+		fmt.Printf("Data (%s): 0x%x\n", cmd.String("type"), data)
+		return nil
+	})
 }
 
 func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
 	dataType := parseDataType(cmd.String("type"))
 	if dataType < 0 {
 		return fmt.Errorf("invalid data type: %s (must be public, ndef, or cash)", cmd.String("type"))
@@ -155,7 +116,7 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 	var data []byte
 	if hexData := cmd.String("hex"); hexData != "" {
 		var err error
-		data, err = parseHex(hexData)
+		data, err = internal.ParseHex(hexData)
 		if err != nil {
 			return fmt.Errorf("invalid hex data: %w", err)
 		}
@@ -169,20 +130,22 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("either --hex or --file is required")
 	}
 
-	// Auto-chunk if data > 240 bytes
-	if len(data) > 240 {
-		return storeDataChunked(kc, uint8(dataType), data)
-	}
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		// Auto-chunk if data > 240 bytes
+		if len(data) > 240 {
+			return doStoreDataChunked(kc, uint8(dataType), data)
+		}
 
-	if err := kc.StoreData(uint8(dataType), data); err != nil {
-		return err
-	}
+		if err := kc.StoreData(uint8(dataType), data); err != nil {
+			return err
+		}
 
-	fmt.Printf("Data stored (%s, %d bytes)\n", cmd.String("type"), len(data))
-	return nil
+		fmt.Printf("Data stored (%s, %d bytes)\n", cmd.String("type"), len(data))
+		return nil
+	})
 }
 
-func storeDataChunked(kc *keycard.CommandSet, dataType uint8, data []byte) error {
+func doStoreDataChunked(kc *keycard.CommandSet, dataType uint8, data []byte) error {
 	chunkSize := 220
 	offset := uint16(0)
 
@@ -209,67 +172,30 @@ func storeDataChunked(kc *keycard.CommandSet, dataType uint8, data []byte) error
 }
 
 func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
 	length := uint8(cmd.Int("length"))
-	challenge, err := kc.GetChallenge(length)
-	if err != nil {
-		return err
-	}
 
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"challenge": "0x" + hex.EncodeToString(challenge),
-		})
-	}
+	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		challenge, err := kc.GetChallenge(length)
+		if err != nil {
+			return err
+		}
 
-	fmt.Printf("Challenge: 0x%x\n", challenge)
-	return nil
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"challenge": "0x" + hex.EncodeToString(challenge),
+			})
+		}
+
+		fmt.Printf("Challenge: 0x%x\n", challenge)
+		return nil
+	})
 }
 
 func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
 	var ndefData []byte
 	if hexData := cmd.String("hex"); hexData != "" {
 		var err error
-		ndefData, err = parseHex(hexData)
+		ndefData, err = internal.ParseHex(hexData)
 		if err != nil {
 			return fmt.Errorf("invalid hex data: %w", err)
 		}
@@ -283,52 +209,42 @@ func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("either --hex or --file is required")
 	}
 
-	if err := kc.SetNDEF(ndefData); err != nil {
-		return err
-	}
-
-	fmt.Printf("NDEF set (%d bytes)\n", len(ndefData))
-	return nil
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if err := kc.SetNDEF(ndefData); err != nil {
+			return err
+		}
+		fmt.Printf("NDEF set (%d bytes)\n", len(ndefData))
+		return nil
+	})
 }
 
 func cmdGetStatus(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		appStatus, err := kc.GetStatusApplication()
+		if err != nil {
+			return err
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		keyStatus, err := kc.GetStatusKeyPath()
+		if err != nil {
+			return err
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]interface{}{
+				"pin_retry_count": appStatus.PinRetryCount,
+				"puk_retry_count": appStatus.PUKRetryCount,
+				"key_initialized": appStatus.KeyInitialized,
+				"key_path":        keyStatus.Path,
+			})
+		}
 
-	appStatus, err := kc.GetStatusApplication()
-	if err != nil {
-		return err
-	}
-
-	keyStatus, err := kc.GetStatusKeyPath()
-	if err != nil {
-		return err
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]interface{}{
-			"pin_retry_count": appStatus.PinRetryCount,
-			"puk_retry_count": appStatus.PUKRetryCount,
-			"key_initialized": appStatus.KeyInitialized,
-			"key_path":        keyStatus.Path,
-		})
-	}
-
-	fmt.Printf("PIN retry count: %d\n", appStatus.PinRetryCount)
-	fmt.Printf("PUK retry count: %d\n", appStatus.PUKRetryCount)
-	fmt.Printf("Key initialized: %v\n", appStatus.KeyInitialized)
-	fmt.Printf("Key path: %s\n", keyStatus.Path)
-	return nil
+		fmt.Printf("PIN retry count: %d\n", appStatus.PinRetryCount)
+		fmt.Printf("PUK retry count: %d\n", appStatus.PUKRetryCount)
+		fmt.Printf("Key initialized: %v\n", appStatus.KeyInitialized)
+		fmt.Printf("Key path: %s\n", keyStatus.Path)
+		return nil
+	})
 }
 
 func parseDataType(s string) int {

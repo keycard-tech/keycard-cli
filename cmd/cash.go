@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
+	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -30,30 +30,22 @@ func CashCommand() *cli.Command {
 }
 
 func cmdCashSign(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
 	hexData := cmd.String("hex")
-	data, err := parseHex(hexData)
+	data, err := internal.ParseHex(hexData)
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
 
-	ch := keycardio.NewNormalChannel(card)
-	cashKC := keycard.NewCashCommandSet(ch)
+	return runCash(cmd, func(cashKC *keycard.CashCommandSet, _ *cli.Command) error {
+		sig, err := cashKC.Sign(data)
+		if err != nil {
+			return err
+		}
+		return outputSignature(cmd, sig)
+	})
+}
 
-	if err := cashKC.Select(); err != nil {
-		return err
-	}
-
-	sig, err := cashKC.Sign(data)
-	if err != nil {
-		return err
-	}
-
+func outputSignature(cmd *cli.Command, sig *types.Signature) error {
 	ethSig := append(sig.R(), sig.S()...)
 	ethSig = append(ethSig, sig.V()+27)
 	pubKey := sig.PubKey()

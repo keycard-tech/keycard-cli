@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
@@ -98,12 +97,10 @@ func SigningCommands() []*cli.Command {
 }
 
 func cmdSign(ctx context.Context, cmd *cli.Command) error {
-	hexData := cmd.String("hex")
-	data, err := parseHex(hexData)
+	data, err := internal.ParseHex(cmd.String("hex"))
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
-
 	return doSign(cmd, data, cmd.String("path"), cmd.String("algo"), false)
 }
 
@@ -112,30 +109,24 @@ func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
 	if args.Len() == 0 {
 		return fmt.Errorf("message argument required")
 	}
-	message := args.First()
-	hash := signHashEthereumMessage(message)
-
+	hash := signHashEthereumMessage(args.First())
 	return doSign(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
 }
 
 func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
-	filePath := cmd.String("file")
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(cmd.String("file"))
 	if err != nil {
 		return fmt.Errorf("error reading file: %w", err)
 	}
 	hash := crypto.Keccak256(content)
-
 	return doSign(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
 }
 
 func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
-	hexData := cmd.String("hex")
-	data, err := parseHex(hexData)
+	data, err := internal.ParseHex(cmd.String("hex"))
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
-
 	return doSign(cmd, data, "", "ecdsa", true)
 }
 
@@ -144,102 +135,50 @@ func cmdSignMessagePinless(ctx context.Context, cmd *cli.Command) error {
 	if args.Len() == 0 {
 		return fmt.Errorf("message argument required")
 	}
-	message := args.First()
-	hash := signHashEthereumMessage(message)
-
+	hash := signHashEthereumMessage(args.First())
 	return doSign(cmd, hash, "", "ecdsa", true)
 }
 
+// doSign performs the signing operation. For pinless signing it uses AuthNone
+// (no PIN required). For normal signing it uses AuthPIN.
 func doSign(cmd *cli.Command, data []byte, path, algo string, pinless bool) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
+	if pinless {
+		return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
+			return doSignCore(kc, data, path, algo, pinless, cmd)
+		})
 	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		return doSignCore(kc, data, path, algo, pinless, cmd)
+	})
+}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
+// doSignCore is the core signing logic, usable from shell.go as-is.
+func doSignCore(kc *keycard.CommandSet, data []byte, path, algo string, pinless bool, cmd *cli.Command) error {
 	// Check applet version for pinless
 	if pinless && internal.IsAppletV4Plus(kc) {
 		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
 	}
 
 	var sig *types.Signature
+	var err error
 
 	if pinless {
 		sig, err = kc.SignPinless(data)
-		if err != nil {
-			return err
+	} else if path != "" {
+		switch strings.ToLower(algo) {
+		case "schnorr":
+			sig, err = kc.SignWithPathAndAlgo(data, path, keycard.P2SignBIP340Schnorr)
+		default: // ecdsa
+			sig, err = kc.SignWithPath(data, path)
 		}
 	} else {
-		secrets := internal.ResolveSecrets(
-			cmd.String("pin"),
-			cmd.String("puk"),
-			cmd.String("pairing-password"),
-		)
-		if err := internal.RequirePIN(secrets); err != nil {
-			return err
-		}
-
-		if err := internal.AutoAuth(kc, secrets); err != nil {
-			return err
-		}
-		defer internal.AutoUnpair(kc)
-
-		if path != "" {
-			switch strings.ToLower(algo) {
-			case "schnorr":
-				sig, err = kc.SignWithPathAndAlgo(data, path, keycard.P2SignBIP340Schnorr)
-			default: // ecdsa
-				sig, err = kc.SignWithPath(data, path)
-			}
-		} else {
-			sig, err = kc.Sign(data)
-		}
-		if err != nil {
-			return err
-		}
+		sig, err = kc.Sign(data)
+	}
+	if err != nil {
+		return err
 	}
 
 	return outputSignature(cmd, sig)
-}
-
-func outputSignature(cmd *cli.Command, sig *types.Signature) error {
-	ethSig := append(sig.R(), sig.S()...)
-	ethSig = append(ethSig, sig.V()+27)
-	pubKey := sig.PubKey()
-	ethAddr := ""
-	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
-		ethAddr = crypto.PubkeyToAddress(*pubkey).Hex()
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]interface{}{
-			"signature": map[string]interface{}{
-				"r":             "0x" + hex.EncodeToString(sig.R()),
-				"s":             "0x" + hex.EncodeToString(sig.S()),
-				"v":             int(sig.V()),
-				"eth_signature": "0x" + hex.EncodeToString(ethSig),
-				"public_key":    "0x" + hex.EncodeToString(pubKey),
-				"address":       ethAddr,
-			},
-		})
-	}
-
-	fmt.Printf("Signature R: 0x%x\n", sig.R())
-	fmt.Printf("Signature S: 0x%x\n", sig.S())
-	fmt.Printf("Signature V: %d\n", sig.V())
-	fmt.Printf("ETH Signature: 0x%x\n", ethSig)
-	fmt.Printf("Public key: 0x%x\n", pubKey)
-	if ethAddr != "" {
-		fmt.Printf("Address: %s\n", ethAddr)
-	}
-	return nil
 }
 
 func signHashEthereumMessage(message string) []byte {

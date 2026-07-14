@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
@@ -145,159 +144,53 @@ func KeyCommands() []*cli.Command {
 }
 
 func cmdGenerateKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		appStatus, err := kc.GetStatusApplication()
+		if err != nil {
+			return err
+		}
+		if appStatus.KeyInitialized {
+			return fmt.Errorf("key already generated. Remove it first with 'remove-key'")
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		keyUID, err := kc.GenerateKey()
+		if err != nil {
+			return err
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"key_uid": "0x" + hex.EncodeToString(keyUID),
+			})
+		}
 
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	appStatus, err := kc.GetStatusApplication()
-	if err != nil {
-		return err
-	}
-	if appStatus.KeyInitialized {
-		return fmt.Errorf("key already generated. Remove it first with 'remove-key'")
-	}
-
-	keyUID, err := kc.GenerateKey()
-	if err != nil {
-		return err
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"key_uid": "0x" + hex.EncodeToString(keyUID),
-		})
-	}
-
-	fmt.Printf("Key generated. UID: 0x%x\n", keyUID)
-	return nil
+		fmt.Printf("Key generated. UID: 0x%x\n", keyUID)
+		return nil
+	})
 }
 
 func cmdRemoveKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	if err := kc.RemoveKey(); err != nil {
-		return err
-	}
-
-	fmt.Println("Key removed")
-	return nil
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if err := kc.RemoveKey(); err != nil {
+			return err
+		}
+		fmt.Println("Key removed")
+		return nil
+	})
 }
 
 func cmdDeriveKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	if err := kc.DeriveKey(path); err != nil {
-		return err
-	}
-
-	fmt.Printf("Key derived at path: %s\n", path)
-	return nil
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		path := cmd.String("path")
+		if err := kc.DeriveKey(path); err != nil {
+			return err
+		}
+		fmt.Printf("Key derived at path: %s\n", path)
+		return nil
+	})
 }
 
 func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	var seed []byte
-
 	mnemonic := cmd.String("mnemonic")
 	seedHex := cmd.String("hex")
 
@@ -308,168 +201,133 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("must specify either --mnemonic or --hex")
 	}
 
+	var seed []byte
 	if mnemonic != "" {
 		if !validateMnemonic(mnemonic) {
 			return fmt.Errorf("invalid BIP39 mnemonic")
 		}
 		seed = types.BinarySeedFromPhrase(mnemonic, "")
 	} else {
-		seed, err = parseHex(seedHex)
+		var err error
+		seed, err = internal.ParseHex(seedHex)
 		if err != nil {
 			return fmt.Errorf("invalid hex seed: %w", err)
 		}
 	}
 
-	keyID, err := kc.LoadSeed(seed)
-	if err != nil {
-		return err
-	}
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		keyID, err := kc.LoadSeed(seed)
+		if err != nil {
+			return err
+		}
 
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"key_id": "0x" + hex.EncodeToString(keyID),
-		})
-	}
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"key_id": "0x" + hex.EncodeToString(keyID),
+			})
+		}
 
-	fmt.Printf("Seed loaded. Key ID: 0x%x\n", keyID)
-	return nil
+		fmt.Printf("Seed loaded. Key ID: 0x%x\n", keyID)
+		return nil
+	})
 }
 
 func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	keyHex := cmd.String("hex")
-	key, err := parseHex(keyHex)
+	key, err := internal.ParseHex(cmd.String("hex"))
 	if err != nil {
 		return fmt.Errorf("invalid hex key: %w", err)
 	}
 
-	if err := kc.LoadLEEKey(key); err != nil {
-		return err
-	}
-
-	fmt.Println("LEE key loaded")
-	return nil
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if err := kc.LoadLEEKey(key); err != nil {
+			return err
+		}
+		fmt.Println("LEE key loaded")
+		return nil
+	})
 }
 
 func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	current := cmd.Bool("current")
-
-	exported, err := doExportKey(kc, path, current, keycard.P2ExportKeyPublicOnly)
-	if err != nil {
-		return err
-	}
-
-	pubKey := exported.PubKey()
-	ethAddr := ""
-	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
-		ethAddr = crypto.PubkeyToAddress(*pubkey).Hex()
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"public_key": "0x" + hex.EncodeToString(pubKey),
-			"address":    ethAddr,
-		})
-	}
-
-	fmt.Printf("Public key: 0x%x\n", pubKey)
-	if ethAddr != "" {
-		fmt.Printf("Address: %s\n", ethAddr)
-	}
-	return nil
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPublicOnly)
+		if err != nil {
+			return err
+		}
+		return outputExportedKey(exported, cmd, false)
+	})
 }
 
 func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
+		if err != nil {
+			return err
+		}
+		return outputExportedKey(exported, cmd, true)
+	})
+}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyExtendedPublic)
+		if err != nil {
+			return err
+		}
+		return outputExportedKeyExtended(exported, cmd)
+	})
+}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
+func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		path := cmd.String("path")
+		key, err := kc.ExportLEEKey(path)
+		if err != nil {
+			return err
+		}
 
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"key": "0x" + hex.EncodeToString(key),
+			})
+		}
 
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
+		fmt.Printf("LEE key: 0x%x\n", key)
+		return nil
+	})
+}
 
+func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 	path := cmd.String("path")
-	current := cmd.Bool("current")
+	length := uint8(cmd.Int("length"))
 
-	exported, err := doExportKey(kc, path, current, keycard.P2ExportKeyPrivateAndPublic)
-	if err != nil {
-		return err
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		key, err := kc.ExportBIP85(path, length)
+		if err != nil {
+			return err
+		}
+
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"key": "0x" + hex.EncodeToString(key),
+			})
+		}
+
+		fmt.Printf("BIP85 key: 0x%x\n", key)
+		return nil
+	})
+}
+
+// doExportKey handles the common export key logic with path/current resolution.
+func doExportKey(kc *keycard.CommandSet, path string, current bool, p2 uint8) (*types.ExportedKey, error) {
+	derive := path != ""
+	makeCurrent := false
+	if !derive && !current {
+		derive = false
 	}
+	return kc.ExportKeyWithP2(derive, makeCurrent, p2, path)
+}
 
-	privKey := exported.PrivKey()
+func outputExportedKey(exported *types.ExportedKey, cmd *cli.Command, showPrivate bool) error {
 	pubKey := exported.PubKey()
 	ethAddr := ""
 	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
@@ -477,14 +335,19 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"private_key": "0x" + hex.EncodeToString(privKey),
-			"public_key":  "0x" + hex.EncodeToString(pubKey),
-			"address":     ethAddr,
-		})
+		out := map[string]string{
+			"public_key": "0x" + hex.EncodeToString(pubKey),
+			"address":    ethAddr,
+		}
+		if showPrivate {
+			out["private_key"] = "0x" + hex.EncodeToString(exported.PrivKey())
+		}
+		return internal.PrintJSON(out)
 	}
 
-	fmt.Printf("Private key: 0x%x\n", privKey)
+	if showPrivate {
+		fmt.Printf("Private key: 0x%x\n", exported.PrivKey())
+	}
 	fmt.Printf("Public key: 0x%x\n", pubKey)
 	if ethAddr != "" {
 		fmt.Printf("Address: %s\n", ethAddr)
@@ -492,42 +355,7 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	current := cmd.Bool("current")
-
-	exported, err := doExportKey(kc, path, current, keycard.P2ExportKeyExtendedPublic)
-	if err != nil {
-		return err
-	}
-
+func outputExportedKeyExtended(exported *types.ExportedKey, cmd *cli.Command) error {
 	pubKey := exported.PubKey()
 	chainCode := exported.ChainCode()
 	ethAddr := ""
@@ -549,115 +377,6 @@ func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 		fmt.Printf("Address: %s\n", ethAddr)
 	}
 	return nil
-}
-
-func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	key, err := kc.ExportLEEKey(path)
-	if err != nil {
-		return err
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"key": "0x" + hex.EncodeToString(key),
-		})
-	}
-
-	fmt.Printf("LEE key: 0x%x\n", key)
-	return nil
-}
-
-func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	path := cmd.String("path")
-	length := uint8(cmd.Int("length"))
-
-	key, err := kc.ExportBIP85(path, length)
-	if err != nil {
-		return err
-	}
-
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"key": "0x" + hex.EncodeToString(key),
-		})
-	}
-
-	fmt.Printf("BIP85 key: 0x%x\n", key)
-	return nil
-}
-
-// doExportKey handles the common export key logic with path/current resolution.
-func doExportKey(kc *keycard.CommandSet, path string, current bool, p2 uint8) (*types.ExportedKey, error) {
-	derive := path != ""
-	makeCurrent := false
-	if !derive && !current {
-		// Default: export current key
-		derive = false
-	}
-	return kc.ExportKeyWithP2(derive, makeCurrent, p2, path)
-}
-
-// parseHex strips 0x prefix and decodes hex string.
-func parseHex(s string) ([]byte, error) {
-	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-		s = s[2:]
-	}
-	return hex.DecodeString(s)
 }
 
 // validateMnemonic checks that the mnemonic has a valid word count

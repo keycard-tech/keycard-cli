@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	keycard "github.com/status-im/keycard-go"
-	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
@@ -36,105 +35,55 @@ func MetadataCommands() []*cli.Command {
 }
 
 func cmdGetName(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		data, err := kc.GetData(keycard.P1StoreDataPublic)
+		if err != nil {
+			return err
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		metadata, err := types.ParseMetadata(data)
+		if err != nil {
+			return fmt.Errorf("failed to parse metadata: %w", err)
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
+		name := metadata.Name()
+		if cmd.Bool("json") {
+			return internal.PrintJSON(map[string]string{
+				"name": name,
+			})
+		}
 
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	data, err := kc.GetData(keycard.P1StoreDataPublic)
-	if err != nil {
-		return err
-	}
-
-	metadata, err := types.ParseMetadata(data)
-	if err != nil {
-		return fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	name := metadata.Name()
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"name": name,
-		})
-	}
-
-	fmt.Printf("Card name: %s\n", name)
-	return nil
+		fmt.Printf("Card name: %s\n", name)
+		return nil
+	})
 }
 
 func cmdSetName(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-	if err := internal.RequirePIN(secrets); err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
 	name := cmd.String("name")
 
-	// Try to get existing metadata first
-	var metadata *types.Metadata
-	existingData, err := kc.GetData(keycard.P1StoreDataPublic)
-	if err == nil {
-		metadata, err = types.ParseMetadata(existingData)
-		if err != nil {
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		// Try to get existing metadata first
+		var metadata *types.Metadata
+		existingData, err := kc.GetData(keycard.P1StoreDataPublic)
+		if err == nil {
+			metadata, err = types.ParseMetadata(existingData)
+			if err != nil {
+				metadata = types.EmptyMetadata()
+			}
+		} else {
 			metadata = types.EmptyMetadata()
 		}
-	} else {
-		metadata = types.EmptyMetadata()
-	}
 
-	if err := metadata.SetName(name); err != nil {
-		return err
-	}
+		if err := metadata.SetName(name); err != nil {
+			return err
+		}
 
-	data := metadata.Serialize()
-	if err := kc.StoreData(keycard.P1StoreDataPublic, data); err != nil {
-		return err
-	}
+		data := metadata.Serialize()
+		if err := kc.StoreData(keycard.P1StoreDataPublic, data); err != nil {
+			return err
+		}
 
-	fmt.Printf("Card name set: %s\n", name)
-	return nil
+		fmt.Printf("Card name set: %s\n", name)
+		return nil
+	})
 }

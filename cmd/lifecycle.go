@@ -164,6 +164,10 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
+	return doInfo(kc, cashKC, selectErr, cmd)
+}
+
+func doInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selectErr error, cmd *cli.Command) error {
 	info := kc.AppInfo()
 	cashInfo := cashKC.CashApplicationInfo
 
@@ -383,81 +387,70 @@ func cmdDelete(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdInit(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	info := kc.AppInfo()
-	if !info.Installed {
-		return fmt.Errorf("keycard applet not installed. Run 'keycard install' first")
-	}
-	if info.Initialized {
-		return fmt.Errorf("card already initialized")
-	}
-
-	// Resolve secrets
-	secrets := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-	)
-
-	// Generate if not provided
-	if secrets.Pin == "" || secrets.Puk == "" {
-		genSecrets, err := keycard.GenerateSecrets()
-		if err != nil {
-			return err
+	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		info := kc.AppInfo()
+		if !info.Installed {
+			return fmt.Errorf("keycard applet not installed. Run 'keycard install' first")
 		}
-		if secrets.Pin == "" {
-			secrets.Pin = genSecrets.Pin()
+		if info.Initialized {
+			return fmt.Errorf("card already initialized")
 		}
-		if secrets.Puk == "" {
-			secrets.Puk = genSecrets.Puk()
-		}
-		if secrets.PairingPass == "" {
-			secrets.PairingPass = genSecrets.PairingPass()
-		}
-	}
 
-	v2 := internal.IsSecureChannelV2(kc)
-	var initErr error
-
-	if cmd.IsSet("alt-pin") || cmd.IsSet("pin-retries") || cmd.IsSet("puk-retries") {
-		// Use InitWithOptions
-		initErr = kc.InitWithOptions(
-			secrets.Pin,
-			cmd.String("alt-pin"),
-			secrets.Puk,
-			secrets.PairingPass,
-			uint8(cmd.Uint("pin-retries")),
-			uint8(cmd.Uint("puk-retries")),
+		// Resolve secrets
+		secrets := internal.ResolveSecrets(
+			cmd.String("pin"),
+			cmd.String("puk"),
+			cmd.String("pairing-password"),
 		)
-	} else if v2 {
-		initErr = kc.InitV2(secrets.Pin, secrets.Puk)
-	} else {
-		initErr = kc.Init(keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass))
-	}
 
-	if initErr != nil {
-		return initErr
-	}
+		// Generate if not provided
+		if secrets.Pin == "" || secrets.Puk == "" {
+			genSecrets, err := keycard.GenerateSecrets()
+			if err != nil {
+				return err
+			}
+			if secrets.Pin == "" {
+				secrets.Pin = genSecrets.Pin()
+			}
+			if secrets.Puk == "" {
+				secrets.Puk = genSecrets.Puk()
+			}
+			if secrets.PairingPass == "" {
+				secrets.PairingPass = genSecrets.PairingPass()
+			}
+		}
 
-	fmt.Println("Card initialized.")
-	fmt.Printf("PIN: %s\n", secrets.Pin)
-	fmt.Printf("PUK: %s\n", secrets.Puk)
-	if !internal.IsSecureChannelV2(kc) {
-		fmt.Printf("Pairing password: %s\n", secrets.PairingPass)
-	}
-	return nil
+		v2 := internal.IsSecureChannelV2(kc)
+		var initErr error
+
+		if cmd.IsSet("alt-pin") || cmd.IsSet("pin-retries") || cmd.IsSet("puk-retries") {
+			// Use InitWithOptions
+			initErr = kc.InitWithOptions(
+				secrets.Pin,
+				cmd.String("alt-pin"),
+				secrets.Puk,
+				secrets.PairingPass,
+				uint8(cmd.Uint("pin-retries")),
+				uint8(cmd.Uint("puk-retries")),
+			)
+		} else if v2 {
+			initErr = kc.InitV2(secrets.Pin, secrets.Puk)
+		} else {
+			initErr = kc.Init(keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass))
+		}
+
+		if initErr != nil {
+			return initErr
+		}
+
+		fmt.Println("Card initialized.")
+		fmt.Printf("PIN: %s\n", secrets.Pin)
+		fmt.Printf("PUK: %s\n", secrets.Puk)
+		if !internal.IsSecureChannelV2(kc) {
+			fmt.Printf("Pairing password: %s\n", secrets.PairingPass)
+		}
+		return nil
+	})
 }
 
 func cmdFactoryReset(ctx context.Context, cmd *cli.Command) error {
@@ -470,31 +463,20 @@ func cmdFactoryReset(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
+	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		info := kc.AppInfo()
+		if !info.Installed {
+			return fmt.Errorf("keycard applet not installed")
+		}
+		if !info.HasFactoryResetCapability() {
+			return fmt.Errorf("card does not support factory reset")
+		}
 
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+		if err := kc.FactoryReset(); err != nil {
+			return err
+		}
 
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	info := kc.AppInfo()
-	if !info.Installed {
-		return fmt.Errorf("keycard applet not installed")
-	}
-	if !info.HasFactoryResetCapability() {
-		return fmt.Errorf("card does not support factory reset")
-	}
-
-	if err := kc.FactoryReset(); err != nil {
-		return err
-	}
-
-	fmt.Println("Card factory reset complete")
-	return nil
+		fmt.Println("Card factory reset complete")
+		return nil
+	})
 }
