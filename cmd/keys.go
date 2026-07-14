@@ -45,32 +45,15 @@ func KeyCommands() []*cli.Command {
 			Usage: "Load a BIP39 seed onto the card",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:     "hex",
-					Usage:    "Seed as hex string",
-					Required: true,
+					Name:  "hex",
+					Usage: "Seed as hex string",
+				},
+				&cli.StringFlag{
+					Name:  "mnemonic",
+					Usage: "BIP39 mnemonic phrase",
 				},
 			},
 			Action: cmdLoadSeed,
-		},
-		{
-			Name:  "load-key-bip32",
-			Usage: "Load a BIP32 key pair onto the card",
-			Flags: []cli.Flag{
-				&cli.StringFlag{
-					Name:     "private-key",
-					Usage:    "Private key as hex",
-					Required: true,
-				},
-				&cli.StringFlag{
-					Name:  "chain-code",
-					Usage: "Chain code as hex (optional)",
-				},
-				&cli.StringFlag{
-					Name:  "public-key",
-					Usage: "Public key as hex (optional)",
-				},
-			},
-			Action: cmdLoadKeyBIP32,
 		},
 		{
 			Name:  "load-lee-key",
@@ -321,10 +304,28 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer internal.AutoUnpair(kc)
 
+	var seed []byte
+
+	mnemonic := cmd.String("mnemonic")
 	seedHex := cmd.String("hex")
-	seed, err := parseHex(seedHex)
-	if err != nil {
-		return fmt.Errorf("invalid hex seed: %w", err)
+
+	if mnemonic != "" && seedHex != "" {
+		return fmt.Errorf("cannot specify both --mnemonic and --hex")
+	}
+	if mnemonic == "" && seedHex == "" {
+		return fmt.Errorf("must specify either --mnemonic or --hex")
+	}
+
+	if mnemonic != "" {
+		if !validateMnemonic(mnemonic) {
+			return fmt.Errorf("invalid BIP39 mnemonic")
+		}
+		seed = types.BinarySeedFromPhrase(mnemonic, "")
+	} else {
+		seed, err = parseHex(seedHex)
+		if err != nil {
+			return fmt.Errorf("invalid hex seed: %w", err)
+		}
 	}
 
 	keyID, err := kc.LoadSeed(seed)
@@ -339,77 +340,6 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Printf("Seed loaded. Key ID: 0x%x\n", keyID)
-	return nil
-}
-
-func cmdLoadKeyBIP32(ctx context.Context, cmd *cli.Command) error {
-	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
-
-	if err := kc.Select(); err != nil {
-		return err
-	}
-
-	secrets, err := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
-	privateKeyHex := cmd.String("private-key")
-	privateKey, err := parseHex(privateKeyHex)
-	if err != nil {
-		return fmt.Errorf("invalid private key hex: %w", err)
-	}
-
-	keyPair := types.Bip32KeyPairFromBinarySeed(privateKey)
-
-	chainCodeHex := cmd.String("chain-code")
-	publicKeyHex := cmd.String("public-key")
-
-	if chainCodeHex != "" {
-		chainCode, err := parseHex(chainCodeHex)
-		if err != nil {
-			return fmt.Errorf("invalid chain code hex: %w", err)
-		}
-		// Reconstruct with chain code
-		keyPair = types.Bip32KeyPairFromBinarySeed(privateKey)
-		_ = chainCode // chain code is set internally if needed
-	}
-	if publicKeyHex != "" {
-		pubKey, err := parseHex(publicKeyHex)
-		if err != nil {
-			return fmt.Errorf("invalid public key hex: %w", err)
-		}
-		// If public key is provided, use TLV parsing
-		keyPair, err = types.Bip32KeyPairFromTLV(keyPair.ToTLV(true))
-		if err != nil {
-			return err
-		}
-		_ = pubKey
-	}
-
-	if err := kc.LoadKeyBIP32(keyPair); err != nil {
-		return err
-	}
-
-	fmt.Println("BIP32 key loaded")
 	return nil
 }
 
@@ -748,4 +678,31 @@ func parseHex(s string) ([]byte, error) {
 		s = s[2:]
 	}
 	return hex.DecodeString(s)
+}
+
+// validateMnemonic checks that the mnemonic has a valid word count
+// and that each word exists in the BIP39 English wordlist.
+func validateMnemonic(phrase string) bool {
+	words := strings.Fields(phrase)
+	// Valid mnemonic lengths: 12, 15, 18, 21, 24 words
+	n := len(words)
+	if n%3 != 0 || n < 12 || n > 24 {
+		return false
+	}
+	for _, word := range words {
+		if !containsWord(word) {
+			return false
+		}
+	}
+	return true
+}
+
+// containsWord checks if a word exists in the BIP39 English wordlist.
+func containsWord(word string) bool {
+	for i := 0; i < len(types.BIP39EnglishWordlist); i++ {
+		if types.BIP39EnglishWordlist[i] == word {
+			return true
+		}
+	}
+	return false
 }

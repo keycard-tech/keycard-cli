@@ -434,22 +434,6 @@ func cmdFactoryReset(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("card does not support factory reset")
 	}
 
-	secrets, err := internal.ResolveSecrets(
-		cmd.String("pin"),
-		cmd.String("puk"),
-		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := internal.AutoAuth(kc, secrets); err != nil {
-		return err
-	}
-	defer internal.AutoUnpair(kc)
-
 	if err := kc.FactoryReset(); err != nil {
 		return err
 	}
