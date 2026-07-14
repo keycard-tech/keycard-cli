@@ -69,10 +69,6 @@ func main() {
 				Name:  "pairing-password",
 				Usage: "Pairing password (or KEYCARD_PAIRING_PASSWORD env var)",
 			},
-			&cli.StringFlag{
-				Name:  "secrets-file",
-				Usage: "Path to file with pin/puk/pairing-password (one per line)",
-			},
 			&cli.BoolFlag{
 				Name:    "json",
 				Aliases: []string{"j"},

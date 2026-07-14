@@ -158,14 +158,12 @@ func cmdGenerateKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -211,14 +209,12 @@ func cmdRemoveKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -249,14 +245,12 @@ func cmdDeriveKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -288,14 +282,12 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -357,14 +349,12 @@ func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -401,14 +391,12 @@ func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -459,14 +447,12 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -520,14 +506,12 @@ func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -581,14 +565,12 @@ func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -627,14 +609,12 @@ func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 

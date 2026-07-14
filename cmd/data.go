@@ -133,14 +133,12 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -254,14 +252,12 @@ func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 

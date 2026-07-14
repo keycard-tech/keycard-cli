@@ -72,17 +72,13 @@ func cmdPair(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("pairing is not needed for Secure Channel V2 cards")
 	}
 
-	pairingPass := cmd.String("pairing-password")
-	if pairingPass == "" {
-		if secrets, err := internal.ResolveSecrets("", "", "", cmd.String("secrets-file"), false); err == nil && secrets.PairingPass != "" {
-			pairingPass = secrets.PairingPass
-		}
-	}
-	if pairingPass == "" {
-		pairingPass = "KeycardDefaultPairing"
-	}
+	secrets := internal.ResolveSecrets(
+		"",
+		"",
+		cmd.String("pairing-password"),
+	)
 
-	if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(pairingPass)); err != nil {
+	if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
 		return err
 	}
 
@@ -123,14 +119,12 @@ func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("unpair is not needed for Secure Channel V2 cards")
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -165,14 +159,12 @@ func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("unpair-others is not needed for Secure Channel V2 cards")
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 

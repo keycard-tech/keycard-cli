@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	keycard "github.com/status-im/keycard-go"
 	"github.com/status-im/keycard-go/apdu"
 	"github.com/status-im/keycard-go/globalplatform"
@@ -106,10 +105,6 @@ func LifecycleCommands() []*cli.Command {
 				&cli.UintFlag{
 					Name:  "puk-retries",
 					Usage: "Number of PUK retries allowed",
-				},
-				&cli.StringFlag{
-					Name:  "secrets-file",
-					Usage: "Path to write generated secrets",
 				},
 			},
 			Action: cmdInit,
@@ -339,16 +334,11 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Resolve secrets
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		true,
 	)
-	if err != nil {
-		return err
-	}
 
 	// Generate if not provided
 	if secrets.Pin == "" || secrets.Puk == "" {
@@ -390,16 +380,12 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 		return initErr
 	}
 
-	// Write secrets to file
-	secretsFile := cmd.String("secrets-file")
-	if secretsFile == "" {
-		secretsFile, _ = internal.DefaultSecretsFilePath()
+	fmt.Println("Card initialized.")
+	fmt.Printf("PIN: %s\n", secrets.Pin)
+	fmt.Printf("PUK: %s\n", secrets.Puk)
+	if !internal.IsSecureChannelV2(kc) {
+		fmt.Printf("Pairing password: %s\n", secrets.PairingPass)
 	}
-	if err := internal.WriteSecretsFile(secretsFile, secrets); err != nil {
-		log.Warn("failed to write secrets file", "error", err)
-	}
-
-	fmt.Printf("Card initialized. Secrets written to %s\n", secretsFile)
 	return nil
 }
 

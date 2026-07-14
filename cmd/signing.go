@@ -177,14 +177,12 @@ func doSign(cmd *cli.Command, data []byte, path, algo string, pinless bool) erro
 			return err
 		}
 	} else {
-		secrets, err := internal.ResolveSecrets(
+		secrets := internal.ResolveSecrets(
 			cmd.String("pin"),
 			cmd.String("puk"),
 			cmd.String("pairing-password"),
-			cmd.String("secrets-file"),
-			false,
 		)
-		if err != nil {
+		if err := internal.RequirePIN(secrets); err != nil {
 			return err
 		}
 

@@ -90,14 +90,12 @@ func cmdVerifyPIN(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -124,14 +122,12 @@ func cmdChangePIN(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -163,14 +159,12 @@ func cmdChangePUK(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -211,17 +205,12 @@ func cmdUnblockPIN(ctx context.Context, cmd *cli.Command) error {
 	}
 	newPIN := cmd.String("new-pin")
 
-	// Auto-auth first with existing PIN if available
-	secrets, err := internal.ResolveSecrets(
-		cmd.String("pin"),
+	// Auto-auth first with pairing (no PIN needed for unblock)
+	secrets := internal.ResolveSecrets(
+		"",
 		"",
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
-		return err
-	}
 
 	// UnblockPIN needs secure channel open but not PIN verified
 	v2 := internal.IsSecureChannelV2(kc)
@@ -261,14 +250,12 @@ func cmdChangePairingPassword(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("pairing password change is not applicable for Secure Channel V2 cards")
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 

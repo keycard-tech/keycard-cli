@@ -52,14 +52,12 @@ func cmdSetPinlessPath(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
@@ -95,14 +93,12 @@ func cmdResetPinlessPath(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
 	}
 
-	secrets, err := internal.ResolveSecrets(
+	secrets := internal.ResolveSecrets(
 		cmd.String("pin"),
 		cmd.String("puk"),
 		cmd.String("pairing-password"),
-		cmd.String("secrets-file"),
-		false,
 	)
-	if err != nil {
+	if err := internal.RequirePIN(secrets); err != nil {
 		return err
 	}
 
