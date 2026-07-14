@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	keycard "github.com/status-im/keycard-go"
 	"github.com/status-im/keycard-go/apdu"
 	"github.com/status-im/keycard-go/globalplatform"
@@ -14,6 +15,8 @@ import (
 	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/status-im/keycard-go/types"
 )
+
+var installerLogger = log.New("package", "installer")
 
 var (
 	ErrAppletAlreadyInstalled = errors.New("keycard applet already installed")
@@ -33,56 +36,56 @@ func NewInstaller(t keycardio.Transmitter) *Installer {
 
 // Install installs the applet from the specified capFile.
 func (i *Installer) Install(capFile *os.File, overwriteApplet bool, installKeycard bool, installCash bool, installNDEF bool, ndefRecordTemplate string) error {
-	logger.Info("installation started")
+	installerLogger.Info("installation started")
 	startTime := time.Now()
 	cmdSet := globalplatform.NewCommandSet(i.c)
 
-	logger.Info("check if keycard is already installed")
+	installerLogger.Info("check if keycard is already installed")
 	if err := i.checkAppletAlreadyInstalled(cmdSet, overwriteApplet); err != nil {
-		logger.Error("check if keycard is already installed failed", "error", err)
+		installerLogger.Error("check if keycard is already installed failed", "error", err)
 		return err
 	}
 
-	logger.Info("select ISD")
+	installerLogger.Info("select ISD")
 	err := cmdSet.Select()
 	if err != nil {
-		logger.Error("select failed", "error", err)
+		installerLogger.Error("select failed", "error", err)
 		return err
 	}
 
-	logger.Info("opening secure channel")
+	installerLogger.Info("opening secure channel")
 	if err = cmdSet.OpenSecureChannel(); err != nil {
-		logger.Error("open secure channel failed", "error", err)
+		installerLogger.Error("open secure channel failed", "error", err)
 		return err
 	}
 
-	logger.Info("delete old version (if present)")
+	installerLogger.Info("delete old version (if present)")
 	if err = cmdSet.DeleteKeycardInstancesAndPackage(); err != nil {
-		logger.Error("delete keycard instances and package failed", "error", err)
+		installerLogger.Error("delete keycard instances and package failed", "error", err)
 		return err
 	}
 
-	logger.Info("loading package")
+	installerLogger.Info("loading package")
 	callback := func(index, total int) {
-		logger.Debug(fmt.Sprintf("loading %d/%d", index+1, total))
+		installerLogger.Debug(fmt.Sprintf("loading %d/%d", index+1, total))
 	}
 	if err = cmdSet.LoadKeycardPackage(capFile, callback); err != nil {
-		logger.Error("load failed", "error", err)
+		installerLogger.Error("load failed", "error", err)
 		return err
 	}
 
 	if installKeycard {
-		logger.Info("installing Keycard applet")
+		installerLogger.Info("installing Keycard applet")
 		if err = cmdSet.InstallKeycardApplet(); err != nil {
-			logger.Error("installing Keycard applet failed", "error", err)
+			installerLogger.Error("installing Keycard applet failed", "error", err)
 			return err
 		}
 	}
 
 	if installCash {
-		logger.Info("installing Cash applet")
+		installerLogger.Info("installing Cash applet")
 		if err = cmdSet.InstallCashApplet(); err != nil {
-			logger.Error("installing Cash applet failed", "error", err)
+			installerLogger.Error("installing Cash applet failed", "error", err)
 			return err
 		}
 	}
@@ -100,29 +103,29 @@ func (i *Installer) Install(capFile *os.File, overwriteApplet bool, installKeyca
 			}
 		}
 
-		logger.Info("setting NDEF url", "url", ndefURL)
-		logger.Info("re-select ISD")
+		installerLogger.Info("setting NDEF url", "url", ndefURL)
+		installerLogger.Info("re-select ISD")
 		err = cmdSet.Select()
 		if err != nil {
-			logger.Error("re-select failed", "error", err)
+			installerLogger.Error("re-select failed", "error", err)
 			return err
 		}
 
-		logger.Info("re-opening secure channel")
+		installerLogger.Info("re-opening secure channel")
 		if err = cmdSet.OpenSecureChannel(); err != nil {
-			logger.Error("open secure channel failed", "error", err)
+			installerLogger.Error("open secure channel failed", "error", err)
 			return err
 		}
 
-		logger.Info("installing NDEF applet")
+		installerLogger.Info("installing NDEF applet")
 		if err = cmdSet.InstallNDEFApplet(ndefRecord); err != nil {
-			logger.Error("installing NDEF applet failed", "error", err)
+			installerLogger.Error("installing NDEF applet failed", "error", err)
 			return err
 		}
 	}
 
 	elapsed := time.Since(startTime)
-	logger.Info(fmt.Sprintf("installation completed in %.4f seconds", elapsed.Seconds()))
+	installerLogger.Info(fmt.Sprintf("installation completed in %.4f seconds", elapsed.Seconds()))
 	return err
 }
 
@@ -130,22 +133,22 @@ func (i *Installer) Install(capFile *os.File, overwriteApplet bool, installKeyca
 func (i *Installer) Delete() error {
 	cmdSet := globalplatform.NewCommandSet(i.c)
 
-	logger.Info("select ISD")
+	installerLogger.Info("select ISD")
 	err := cmdSet.Select()
 	if err != nil {
-		logger.Error("select failed", "error", err)
+		installerLogger.Error("select failed", "error", err)
 		return err
 	}
 
-	logger.Info("opening secure channel")
+	installerLogger.Info("opening secure channel")
 	if err = cmdSet.OpenSecureChannel(); err != nil {
-		logger.Error("open secure channel failed", "error", err)
+		installerLogger.Error("open secure channel failed", "error", err)
 		return err
 	}
 
-	logger.Info("delete old version")
+	installerLogger.Info("delete old version")
 	if err = cmdSet.DeleteKeycardInstancesAndPackage(); err != nil {
-		logger.Error("delete keycard instances and package failed", "error", err)
+		installerLogger.Error("delete keycard instances and package failed", "error", err)
 		return err
 	}
 
@@ -154,28 +157,28 @@ func (i *Installer) Delete() error {
 
 func (i *Installer) buildNDEFRecordWithCashAppletData(ndefRecordTemplate string) (string, []byte, error) {
 	cashCmdSet := keycard.NewCashCommandSet(i.c)
-	logger.Info("selecting cash applet")
+	installerLogger.Info("selecting cash applet")
 	err := cashCmdSet.Select()
 	if err != nil {
-		logger.Error("error selecting cash applet", "error", err)
+		installerLogger.Error("error selecting cash applet", "error", err)
 		return "", nil, err
 	}
 
 	info := cashCmdSet.CashApplicationInfo
-	logger.Info("parsing cash applet public key", "public key", fmt.Sprintf("0x%x", info.PublicKey))
+	installerLogger.Info("parsing cash applet public key", "public key", fmt.Sprintf("0x%x", info.PublicKey))
 	ecdsaPubKey, err := crypto.UnmarshalPubkey(info.PublicKey)
 	if err != nil {
-		logger.Error("error parsing cash applet public key", "error", err)
+		installerLogger.Error("error parsing cash applet public key", "error", err)
 		return "", nil, err
 	}
 
 	address := crypto.PubkeyToAddress(*ecdsaPubKey)
-	logger.Info("deriving cash applet address", "address", address.String())
+	installerLogger.Info("deriving cash applet address", "address", address.String())
 	vars := map[string]string{
 		"cashAddress": address.String(),
 	}
 
-	return buildNdefDataWithURL(ndefRecordTemplate, vars)
+	return BuildNdefDataWithURL(ndefRecordTemplate, vars)
 }
 
 func (i *Installer) checkAppletAlreadyInstalled(cmdSet *globalplatform.CommandSet, overwriteApplet bool) error {

@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bytes"
@@ -23,7 +23,8 @@ func buildURL(urlTemplate string, vars interface{}) (string, error) {
 	return urlBuf.String(), nil
 }
 
-func buildNdefDataWithURL(urlTemplate string, vars interface{}) (string, []byte, error) {
+// BuildNdefDataWithURL builds NDEF data with a URL record.
+func BuildNdefDataWithURL(urlTemplate string, vars interface{}) (string, []byte, error) {
 	url, err := buildURL(urlTemplate, vars)
 	if err != nil {
 		return "", nil, err
