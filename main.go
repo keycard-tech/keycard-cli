@@ -83,6 +83,14 @@ func main() {
 				Name:  "reader",
 				Usage: "Specific reader name (or auto-detect)",
 			},
+			&cli.StringFlag{
+				Name:  "card-ca",
+				Usage: "CA public key for V2 certificate verification (hex, 33 bytes compressed)",
+			},
+			&cli.StringFlag{
+				Name:  "whitelist-card",
+				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed)",
+			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			initLogger(cmd.String("log-level"))

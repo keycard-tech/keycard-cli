@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	keycard "github.com/status-im/keycard-go"
 	"github.com/status-im/keycard-go/globalplatform"
 	keycardio "github.com/status-im/keycard-go/io"
+	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -31,7 +35,7 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 	defer cleanup()
 
 	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+	kc := newCommandSet(ch, cmd)
 
 	if err := kc.Select(); err != nil {
 		return err
@@ -116,4 +120,46 @@ func runCash(cmd *cli.Command, fn func(cashKC *keycard.CashCommandSet, cmd *cli.
 	}
 
 	return fn(cashKC, cmd)
+}
+
+// newCommandSet creates a keycard.CommandSet, optionally using a custom CA
+// public key and/or whitelisted card identity key from CLI flags.
+func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
+	cardCA := cmd.String("card-ca")
+	whitelistCard := cmd.String("whitelist-card")
+
+	if cardCA == "" && whitelistCard == "" {
+		return keycard.NewCommandSet(ch)
+	}
+
+	var caPublicKeys [][33]byte
+	var whitelistedCardKeys [][33]byte
+
+	if cardCA != "" {
+		caBytes, err := internal.ParseHex(cardCA)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: invalid card-ca hex: %v\n", err)
+		} else if len(caBytes) != 33 {
+			fmt.Fprintln(os.Stderr, "warning: card-ca must be 33 bytes (compressed public key)")
+		} else {
+			var caKey [33]byte
+			copy(caKey[:], caBytes)
+			caPublicKeys = append(caPublicKeys, caKey)
+		}
+	}
+
+	if whitelistCard != "" {
+		wlBytes, err := internal.ParseHex(whitelistCard)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "warning: invalid whitelist-card hex:", err)
+		} else if len(wlBytes) != 33 {
+			fmt.Fprintln(os.Stderr, "warning: whitelist-card must be 33 bytes (compressed public key)")
+		} else {
+			var wlKey [33]byte
+			copy(wlKey[:], wlBytes)
+			whitelistedCardKeys = append(whitelistedCardKeys, wlKey)
+		}
+	}
+
+	return keycard.NewCommandSetWithCAs(ch, caPublicKeys, whitelistedCardKeys)
 }
