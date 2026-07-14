@@ -92,79 +92,21 @@ func main() {
 			initLogger(cmd.String("log-level"))
 			return ctx, nil
 		},
-		Commands: []*cli.Command{
-			// Lifecycle commands
-			{
-				Name:     "lifecycle",
-				Usage:    "Lifecycle commands (install, init, delete, etc.)",
-				Commands: cmd.LifecycleCommands(),
-			},
-
-			// Pairing commands
-			{
-				Name:     "pairing",
-				Usage:    "Secure channel / pairing commands",
-				Commands: cmd.PairingCommands(),
-			},
-
-			// Key management commands
-			{
-				Name:     "keys",
-				Usage:    "Key management commands (generate, export, derive, etc.)",
-				Commands: cmd.KeyCommands(),
-			},
-
-			// Signing commands
-			{
-				Name:     "sign",
-				Usage:    "Signing commands",
-				Commands: cmd.SigningCommands(),
-			},
-
-			// Credentials commands
-			{
-				Name:     "credentials",
-				Usage:    "Credential management commands (PIN, PUK, pairing password)",
-				Commands: cmd.CredentialsCommands(),
-			},
-
-			// Data commands
-			{
-				Name:     "data",
-				Usage:    "Data management commands (get-data, store-data, NDEF)",
-				Commands: cmd.DataCommands(),
-			},
-
-			// Pinless commands
-			{
-				Name:     "pinless",
-				Usage:    "Pinless signing commands (applet < 4.0 only)",
-				Commands: cmd.PinlessCommands(),
-			},
-
-			// Metadata commands
-			{
-				Name:     "metadata",
-				Usage:    "Metadata commands (card name)",
-				Commands: cmd.MetadataCommands(),
-			},
-
-			// Identify command
-			cmd.IdentifyCommand(),
-
-			// Cash command
-			cmd.CashCommand(),
-
-			// GP (GlobalPlatform) low-level commands
-			{
-				Name:     "gp",
-				Usage:    "Low-level GlobalPlatform commands",
-				Commands: cmd.GPCommands(),
-			},
-
-			// Shell (scripting mode)
-			cmd.ShellCommand(),
-		},
+		Commands: func() []*cli.Command {
+			cmds := cmd.LifecycleCommands()
+			cmds = append(cmds, cmd.PairingCommands()...)
+			cmds = append(cmds, cmd.KeyCommands()...)
+			cmds = append(cmds, cmd.SigningCommands()...)
+			cmds = append(cmds, cmd.CredentialsCommands()...)
+			cmds = append(cmds, cmd.DataCommands()...)
+			cmds = append(cmds, cmd.PinlessCommands()...)
+			cmds = append(cmds, cmd.MetadataCommands()...)
+			cmds = append(cmds, cmd.IdentifyCommand())
+			cmds = append(cmds, cmd.CashCommand())
+			cmds = append(cmds, cmd.ShellCommand())
+			cmds = append(cmds, cmd.GPCommands()...)
+			return cmds
+		}(),
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {

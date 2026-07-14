@@ -173,6 +173,9 @@ func doSign(cmd *cli.Command, data []byte, path, algo string, pinless bool) erro
 
 	if pinless {
 		sig, err = kc.SignPinless(data)
+		if err != nil {
+			return err
+		}
 	} else {
 		secrets, err := internal.ResolveSecrets(
 			cmd.String("pin"),
@@ -200,10 +203,9 @@ func doSign(cmd *cli.Command, data []byte, path, algo string, pinless bool) erro
 		} else {
 			sig, err = kc.Sign(data)
 		}
-	}
-
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	return outputSignature(cmd, sig)
