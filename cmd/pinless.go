@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	keycard "github.com/status-im/keycard-go"
+	keycardio "github.com/status-im/keycard-go/io"
 	"github.com/urfave/cli/v3"
+
+	"github.com/status-im/keycard-cli/internal"
 )
 
 // PinlessCommands returns the pinless signing command group.
@@ -31,11 +35,86 @@ func PinlessCommands() []*cli.Command {
 }
 
 func cmdSetPinlessPath(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement set-pinless-path
-	return fmt.Errorf("set-pinless-path: not implemented yet")
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	if internal.IsAppletV4Plus(kc) {
+		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
+	}
+
+	secrets, err := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+		cmd.String("secrets-file"),
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := internal.AutoAuth(kc, secrets); err != nil {
+		return err
+	}
+	defer internal.AutoUnpair(kc)
+
+	path := cmd.String("path")
+	if err := kc.SetPinlessPath(path); err != nil {
+		return err
+	}
+
+	fmt.Printf("Pinless path set: %s\n", path)
+	return nil
 }
 
 func cmdResetPinlessPath(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement reset-pinless-path
-	return fmt.Errorf("reset-pinless-path: not implemented yet")
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	if internal.IsAppletV4Plus(kc) {
+		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
+	}
+
+	secrets, err := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+		cmd.String("secrets-file"),
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := internal.AutoAuth(kc, secrets); err != nil {
+		return err
+	}
+	defer internal.AutoUnpair(kc)
+
+	if err := kc.ResetPinlessPath(); err != nil {
+		return err
+	}
+
+	fmt.Println("Pinless path reset")
+	return nil
 }

@@ -68,8 +68,8 @@ func LifecycleCommands() []*cli.Command {
 			Action: cmdInstall,
 		},
 		{
-			Name:   "delete",
-			Usage:  "Delete applets from the card",
+			Name:  "delete",
+			Usage: "Delete applets from the card",
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:    "yes",
@@ -115,8 +115,8 @@ func LifecycleCommands() []*cli.Command {
 			Action: cmdInit,
 		},
 		{
-			Name:   "factory-reset",
-			Usage:  "Factory reset the card",
+			Name:  "factory-reset",
+			Usage: "Factory reset the card",
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:    "yes",
@@ -167,23 +167,23 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Bool("json") {
 		type infoOut struct {
 			Keycard struct {
-				Installed             bool     `json:"installed"`
-				Initialized           bool     `json:"initialized"`
-				AppVersion            string   `json:"app_version,omitempty"`
-				AppVersionHex         string   `json:"app_version_hex,omitempty"`
-				HasMasterKey          bool     `json:"has_master_key"`
-				KeyUID                string   `json:"key_uid,omitempty"`
-				SecureChannelVersion  string   `json:"secure_channel_version,omitempty"`
-				Capabilities          []string `json:"capabilities,omitempty"`
-				PINRetries            int      `json:"pin_retries,omitempty"`
-				LEEMode               bool     `json:"lee_mode"`
-				HasFactoryResetCap    bool     `json:"has_factory_reset_capability"`
+				Installed            bool     `json:"installed"`
+				Initialized          bool     `json:"initialized"`
+				AppVersion           string   `json:"app_version,omitempty"`
+				AppVersionHex        string   `json:"app_version_hex,omitempty"`
+				HasMasterKey         bool     `json:"has_master_key"`
+				KeyUID               string   `json:"key_uid,omitempty"`
+				SecureChannelVersion string   `json:"secure_channel_version,omitempty"`
+				Capabilities         []string `json:"capabilities,omitempty"`
+				PINRetries           int      `json:"pin_retries,omitempty"`
+				LEEMode              bool     `json:"lee_mode"`
+				HasFactoryResetCap   bool     `json:"has_factory_reset_capability"`
 			} `json:"keycard"`
 			Cash struct {
-				Installed  bool   `json:"installed"`
-				PublicKey  string `json:"public_key,omitempty"`
-				Address    string `json:"address,omitempty"`
-				Version    string `json:"version,omitempty"`
+				Installed bool   `json:"installed"`
+				PublicKey string `json:"public_key,omitempty"`
+				Address   string `json:"address,omitempty"`
+				Version   string `json:"version,omitempty"`
 			} `json:"cash"`
 		}
 
@@ -404,6 +404,56 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdFactoryReset(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement factory-reset
-	return fmt.Errorf("factory-reset: not implemented yet")
+	if !cmd.Bool("yes") {
+		fmt.Print("This will factory reset the card. All data will be lost. Continue? (y/N): ")
+		var resp string
+		fmt.Scanln(&resp)
+		if resp != "y" && resp != "Y" {
+			return nil
+		}
+	}
+
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	info := kc.AppInfo()
+	if !info.Installed {
+		return fmt.Errorf("keycard applet not installed")
+	}
+	if !info.HasFactoryResetCapability() {
+		return fmt.Errorf("card does not support factory reset")
+	}
+
+	secrets, err := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+		cmd.String("secrets-file"),
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := internal.AutoAuth(kc, secrets); err != nil {
+		return err
+	}
+	defer internal.AutoUnpair(kc)
+
+	if err := kc.FactoryReset(); err != nil {
+		return err
+	}
+
+	fmt.Println("Card factory reset complete")
+	return nil
 }

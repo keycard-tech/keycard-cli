@@ -107,13 +107,13 @@ func runShell(card *scard.Card, input io.Reader) error {
 type shellCommand = func(args ...string) error
 
 type shellRunner struct {
-	ch     types.Channel
-	kc     *keycard.CommandSet
-	cashKC *keycard.CashCommandSet
-	gp     *globalplatform.CommandSet
-	secrets *keycard.Secrets
+	ch       types.Channel
+	kc       *keycard.CommandSet
+	cashKC   *keycard.CashCommandSet
+	gp       *globalplatform.CommandSet
+	secrets  *keycard.Secrets
 	commands map[string]shellCommand
-	out    *bytes.Buffer
+	out      *bytes.Buffer
 }
 
 func (s *shellRunner) write(str string) {
@@ -615,16 +615,27 @@ func (s *shellRunner) commandKeycardExportKeyPrivate(args ...string) error {
 	if err := s.requireArgs(args, 1); err != nil {
 		return err
 	}
-	// TODO: update for new ExportKeyWithP2 API
-	return fmt.Errorf("export-key-private: not yet updated for new SDK API")
+	path := args[0]
+	exported, err := s.kc.ExportKeyWithP2(false, false, keycard.P2ExportKeyPrivateAndPublic, path)
+	if err != nil {
+		return err
+	}
+	s.write(fmt.Sprintf("PRIVATE KEY: 0x%x\n", exported.PrivKey()))
+	s.write(fmt.Sprintf("PUBLIC KEY: 0x%x\n\n", exported.PubKey()))
+	return nil
 }
 
 func (s *shellRunner) commandKeycardExportKeyPublic(args ...string) error {
 	if err := s.requireArgs(args, 1); err != nil {
 		return err
 	}
-	// TODO: update for new ExportKeyWithP2 API
-	return fmt.Errorf("export-key-public: not yet updated for new SDK API")
+	path := args[0]
+	exported, err := s.kc.ExportKeyWithP2(false, false, keycard.P2ExportKeyPublicOnly, path)
+	if err != nil {
+		return err
+	}
+	s.write(fmt.Sprintf("PUBLIC KEY: 0x%x\n\n", exported.PubKey()))
+	return nil
 }
 
 func (s *shellRunner) commandKeycardSign(args ...string) error {

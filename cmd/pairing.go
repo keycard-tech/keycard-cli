@@ -55,18 +55,137 @@ func PairingCommands() []*cli.Command {
 }
 
 func cmdPair(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement pair
-	return fmt.Errorf("pair: not implemented yet")
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	if internal.IsSecureChannelV2(kc) {
+		return fmt.Errorf("pairing is not needed for Secure Channel V2 cards")
+	}
+
+	pairingPass := cmd.String("pairing-password")
+	if pairingPass == "" {
+		if secrets, err := internal.ResolveSecrets("", "", "", cmd.String("secrets-file"), false); err == nil && secrets.PairingPass != "" {
+			pairingPass = secrets.PairingPass
+		}
+	}
+	if pairingPass == "" {
+		pairingPass = "KeycardDefaultPairing"
+	}
+
+	if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(pairingPass)); err != nil {
+		return err
+	}
+
+	pairing := kc.Pairing()
+	if pairing == nil {
+		return fmt.Errorf("pairing succeeded but pairing info is nil")
+	}
+
+	key := pairing.Key()
+
+	if cmd.Bool("json") {
+		return internal.PrintJSON(map[string]interface{}{
+			"pairing_key":   fmt.Sprintf("0x%x", key[:]),
+			"pairing_index": pairing.Index(),
+		})
+	}
+
+	fmt.Printf("Pairing key: 0x%x\n", key[:])
+	fmt.Printf("Pairing index: %d\n", pairing.Index())
+	return nil
 }
 
 func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement unpair
-	return fmt.Errorf("unpair: not implemented yet")
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	if internal.IsSecureChannelV2(kc) {
+		return fmt.Errorf("unpair is not needed for Secure Channel V2 cards")
+	}
+
+	secrets, err := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+		cmd.String("secrets-file"),
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := internal.AutoAuth(kc, secrets); err != nil {
+		return err
+	}
+
+	index := uint8(cmd.Int("index"))
+	if err := kc.Unpair(index); err != nil {
+		return err
+	}
+
+	fmt.Printf("Unpaired (index: %d)\n", index)
+	return nil
 }
 
 func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
-	// TODO: implement unpair-others
-	return fmt.Errorf("unpair-others: not implemented yet")
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	kc := keycard.NewCommandSet(ch)
+
+	if err := kc.Select(); err != nil {
+		return err
+	}
+
+	if internal.IsSecureChannelV2(kc) {
+		return fmt.Errorf("unpair-others is not needed for Secure Channel V2 cards")
+	}
+
+	secrets, err := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+		cmd.String("secrets-file"),
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := internal.AutoAuth(kc, secrets); err != nil {
+		return err
+	}
+
+	if err := kc.UnpairOthers(); err != nil {
+		return err
+	}
+
+	fmt.Println("All other pairings removed")
+	return nil
 }
 
 func cmdSecureChannelVersion(ctx context.Context, cmd *cli.Command) error {
