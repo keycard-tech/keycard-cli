@@ -11,6 +11,7 @@ import (
 	"github.com/status-im/keycard-go/apdu"
 	"github.com/status-im/keycard-go/globalplatform"
 	keycardio "github.com/status-im/keycard-go/io"
+	keycardtypes "github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -139,11 +140,18 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc := keycard.NewCommandSet(ch)
 
-	if err := kc.Select(); err != nil {
-		if e, ok := err.(*apdu.ErrBadResponse); ok && e.Sw == globalplatform.SwFileNotFound {
+	// For V4+ cards with invalid certificate, Select() will error but
+	// AppInfo is already populated. Catch the error so we can still display info.
+	var selectErr error
+	if selectErr = kc.Select(); selectErr != nil {
+		if e, ok := selectErr.(*apdu.ErrBadResponse); ok && e.Sw == globalplatform.SwFileNotFound {
 			// Applet not installed
 		} else {
-			return err
+			// Non-SwFileNotFound error (e.g., certificate verification failure on V4+).
+			// If AppInfo is available, continue to display it.
+			if kc.AppInfo() == nil || !kc.AppInfo().Installed {
+				return selectErr
+			}
 		}
 	}
 
@@ -159,6 +167,12 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 	info := kc.AppInfo()
 	cashInfo := cashKC.CashApplicationInfo
 
+	appVersion := uint16(0)
+	if info != nil && info.Installed {
+		appVersion = info.AppVersion()
+	}
+	isV4Plus := appVersion >= 0x0400
+
 	if cmd.Bool("json") {
 		type infoOut struct {
 			Keycard struct {
@@ -173,6 +187,13 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 				PINRetries           int      `json:"pin_retries,omitempty"`
 				LEEMode              bool     `json:"lee_mode"`
 				HasFactoryResetCap   bool     `json:"has_factory_reset_capability"`
+				// V1-V3 fields
+				InstanceUID      string `json:"instance_uid,omitempty"`
+				AvailableSlots   *int   `json:"available_slots,omitempty"`
+				// V4+ fields
+				Certificate      string `json:"certificate,omitempty"`
+				IdentityPubKey   string `json:"identity_pub_key,omitempty"`
+				CertVerification string `json:"certificate_verification_error,omitempty"`
 			} `json:"keycard"`
 			Cash struct {
 				Installed bool   `json:"installed"`
@@ -212,6 +233,32 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 			if info.HasNDEFCapability() {
 				out.Keycard.Capabilities = append(out.Keycard.Capabilities, "ndef")
 			}
+
+			// V1-V3 fields: InstanceUID and available pairing slots
+			if !isV4Plus {
+				if len(info.InstanceUID) > 0 {
+					out.Keycard.InstanceUID = "0x" + hex.EncodeToString(info.InstanceUID)
+				}
+				if len(info.AvailableSlots) > 0 {
+					slots := int(info.AvailableSlots[0])
+					out.Keycard.AvailableSlots = &slots
+				}
+			}
+
+			// V4+ fields: certificate and identity public key
+			if isV4Plus {
+				if len(info.CertData) > 0 {
+					out.Keycard.Certificate = hex.EncodeToString(info.CertData)
+					cert, err := keycardtypes.ParseCertificate(info.CertData)
+					if err == nil {
+						identPub := cert.IdentPub()
+						out.Keycard.IdentityPubKey = "0x" + hex.EncodeToString(identPub[:])
+					}
+				}
+				if selectErr != nil {
+					out.Keycard.CertVerification = selectErr.Error()
+				}
+			}
 		}
 
 		if cashInfo != nil && cashInfo.Installed {
@@ -247,6 +294,30 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 		fmt.Printf("    Credentials Management: %v\n", info.HasCredentialsManagementCapability())
 		fmt.Printf("    NDEF: %v\n", info.HasNDEFCapability())
 		fmt.Printf("    Factory reset: %v\n", info.HasFactoryResetCapability())
+
+		// V1-V3 fields
+		if !isV4Plus {
+			if len(info.InstanceUID) > 0 {
+				fmt.Printf("  Instance UID: 0x%x\n", info.InstanceUID)
+			}
+			if len(info.AvailableSlots) > 0 {
+				fmt.Printf("  Available pairing slots: %d\n", info.AvailableSlots[0])
+			}
+		}
+
+		// V4+ fields
+		if isV4Plus {
+			if len(info.CertData) > 0 {
+				fmt.Printf("  Certificate: %s\n", hex.EncodeToString(info.CertData))
+				cert, err := keycardtypes.ParseCertificate(info.CertData)
+				if err == nil {
+					fmt.Printf("  Identity public key: 0x%x\n", cert.IdentPub())
+				}
+			}
+			if selectErr != nil {
+				fmt.Printf("  Certificate verification error: %v\n", selectErr)
+			}
+		}
 	}
 
 	fmt.Println("Cash Applet:")
