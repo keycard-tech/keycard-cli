@@ -93,16 +93,10 @@ func cmdGetData(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(DataResult{
-				Type: cmd.String("type"),
-				Data: "0x" + hex.EncodeToString(data),
-			})
-		}
-
-		fmt.Printf("Data (%s): 0x%x\n", cmd.String("type"), data)
-		return nil
+		return PrintResultCLI(cmd, DataResult{
+			Type: cmd.String("type"),
+			Data: "0x" + hex.EncodeToString(data),
+		})
 	})
 }
 
@@ -131,9 +125,10 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 		if err := doKeycardStoreData(kc, dataType, data); err != nil {
 			return err
 		}
-
-		fmt.Printf("Data stored (%s, %d bytes)\n", cmd.String("type"), len(data))
-		return nil
+		return PrintResultCLI(cmd, StoreDataResult{
+			Type:  cmd.String("type"),
+			Bytes: len(data),
+		})
 	})
 }
 
@@ -145,15 +140,9 @@ func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(ChallengeResult{
-				Challenge: "0x" + hex.EncodeToString(challenge),
-			})
-		}
-
-		fmt.Printf("Challenge: 0x%x\n", challenge)
-		return nil
+		return PrintResultCLI(cmd, ChallengeResult{
+			Challenge: "0x" + hex.EncodeToString(challenge),
+		})
 	})
 }
 
@@ -179,8 +168,7 @@ func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.SetNDEF(ndefData); err != nil {
 			return err
 		}
-		fmt.Printf("NDEF set (%d bytes)\n", len(ndefData))
-		return nil
+		return PrintResultCLI(cmd, SetNDEFResult{Bytes: len(ndefData)})
 	})
 }
 
@@ -190,15 +178,6 @@ func cmdGetStatus(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(result)
-		}
-
-		fmt.Printf("PIN retry count: %d\n", result.PinRetryCount)
-		fmt.Printf("PUK retry count: %d\n", result.PUKRetryCount)
-		fmt.Printf("Key initialized: %v\n", result.KeyInitialized)
-		fmt.Printf("Key path: %s\n", result.KeyPath)
-		return nil
+		return PrintResultCLI(cmd, result)
 	})
 }

@@ -37,6 +37,6 @@ func cmdCashSign(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-		return outputSignature(cmd, sig)
+		return PrintResultCLI(cmd, newSignatureResult(sig))
 	})
 }

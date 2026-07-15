@@ -122,17 +122,12 @@ func cmdGPSendAPDU(ctx context.Context, cmd *cli.Command) error {
 		if resp.Sw != apdu.SwOK {
 			return apdu.NewErrBadResponse(resp.Sw, "unexpected response")
 		}
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]interface{}{
-				"sw":   fmt.Sprintf("0x%04x", resp.Sw),
-				"data": "0x" + hex.EncodeToString(resp.Data),
-			})
-		}
-		fmt.Printf("SW: 0x%04x\n", resp.Sw)
-		if len(resp.Data) > 0 {
-			fmt.Printf("Response: 0x%x\n", resp.Data)
-		}
-		return nil
+		return PrintResultCLI(cmd, GPResult{
+			SW:      resp.Sw,
+			Data:    resp.Data,
+			SWStr:   fmt.Sprintf("0x%04x", resp.Sw),
+			DataHex: "0x" + hex.EncodeToString(resp.Data),
+		})
 	})
 }
 
@@ -151,18 +146,15 @@ func cmdGPSelect(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		if aid != nil {
-			fmt.Printf("Selected AID: %s\n", cmd.String("aid"))
-		} else {
-			fmt.Println("Selected ISD")
+			return PrintResultCLI(cmd, ActionResult{Message: "Selected AID: " + cmd.String("aid")})
 		}
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Selected ISD"})
 	})
 }
 
 func cmdGPOpenSecureChannel(ctx context.Context, cmd *cli.Command) error {
 	return runGP(cmd, func(gp *globalplatform.CommandSet, _ *cli.Command) error {
-		fmt.Println("GP secure channel opened")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "GP secure channel opened"})
 	})
 }
 
@@ -176,8 +168,7 @@ func cmdGPDelete(ctx context.Context, cmd *cli.Command) error {
 		if err := gp.DeleteObject(aid); err != nil {
 			return err
 		}
-		fmt.Printf("Deleted AID: %s\n", cmd.String("aid"))
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Deleted AID: " + cmd.String("aid")})
 	})
 }
 
@@ -201,8 +192,7 @@ func cmdGPLoad(ctx context.Context, cmd *cli.Command) error {
 		if err := gp.LoadPackage(f, pkgAID, callback); err != nil {
 			return err
 		}
-		fmt.Printf("Package loaded: %s\n", cmd.String("pkg-aid"))
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Package loaded: " + cmd.String("pkg-aid")})
 	})
 }
 
@@ -232,8 +222,7 @@ func cmdGPInstallForInstall(ctx context.Context, cmd *cli.Command) error {
 		if err := gp.InstallForInstall(pkgAID, appletAID, instanceAID, params); err != nil {
 			return err
 		}
-		fmt.Println("Install for install complete")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Install for install complete"})
 	})
 }
 
@@ -243,12 +232,6 @@ func cmdGPGetStatus(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"lifecycle": status.LifeCycle(),
-			})
-		}
-		fmt.Printf("Card status: %s\n", status.LifeCycle())
-		return nil
+		return PrintResultCLI(cmd, GPStatusResult{Lifecycle: status.LifeCycle()})
 	})
 }

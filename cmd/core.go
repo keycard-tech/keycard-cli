@@ -2,12 +2,12 @@
 //
 // Architecture:
 //
-//   - core.go: pure business logic functions (no I/O, no cli.Command dependency).
-//     These take card command sets and parameters, return structured results.
+//   - core.go: business logic functions and shared result types.
+//     Result types implement Format() for text output and carry json tags for JSON.
 //   - *.go (gp, lifecycle, pairing, etc.): top-level CLI commands. Parse flags,
-//     call runCard/runGP/runCash, delegate to core functions, format output.
+//     call runCard/runGP/runCash, delegate to core functions, emit via PrintResultCLI.
 //   - shell.go + shell_commands.go: shell interpreter. Parse positional args,
-//     maintain session state, delegate to core functions, format output.
+//     maintain session state, delegate to core functions, emit via PrintResult.
 //
 // To add a new command:
 //  1. Add the core business logic function in core.go
@@ -19,8 +19,10 @@ package cmd
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -33,19 +35,119 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Output dispatcher — shared between CLI and shell
+// ---------------------------------------------------------------------------
+
+// OutputMode controls output format.
+type OutputMode int
+
+const (
+	OutputText OutputMode = iota
+	OutputJSON
+)
+
+// Result is implemented by all command result types.
+type Result interface {
+	Format() string
+}
+
+// PrintResult writes r to stdout as JSON (if mode == OutputJSON) or
+// as formatted text (r.Format()).
+func PrintResult(mode OutputMode, r Result) error {
+	if mode == OutputJSON {
+		data, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Print(r.Format())
+	return nil
+}
+
+// PrintResultCLI is a convenience wrapper for standalone CLI commands.
+// It reads the --json flag from cmd and dispatches to PrintResult.
+func PrintResultCLI(cmd interface{ Bool(string) bool }, r Result) error {
+	mode := OutputText
+	if cmd.Bool("json") {
+		mode = OutputJSON
+	}
+	return PrintResult(mode, r)
+}
+
+// ---------------------------------------------------------------------------
 // Result types — shared between CLI and shell for structured output
 // ---------------------------------------------------------------------------
 
 // GPResult holds the result of a GP APDU send.
 type GPResult struct {
-	SW   uint16
-	Data []byte
+	SW   uint16 `json:"-"`
+	Data []byte `json:"-"`
+
+	SWStr   string `json:"sw"`
+	DataHex string `json:"data"`
+}
+
+func (r GPResult) Format() string {
+	return fmt.Sprintf("SW: 0x%04x\nResponse: 0x%s\n", r.SW, hex.EncodeToString(r.Data))
 }
 
 // KeycardInfoResult holds comprehensive card information.
 type KeycardInfoResult struct {
 	Keycard KeycardInfo `json:"keycard"`
 	Cash    CashInfo    `json:"cash"`
+}
+
+func (r *KeycardInfoResult) Format() string {
+	var w strings.Builder
+	kc := r.Keycard
+	w.WriteString("Keycard Applet:\n")
+	if !kc.Installed {
+		w.WriteString("  Installed: false\n")
+	} else {
+		w.WriteString("  Installed: true\n")
+		w.WriteString(fmt.Sprintf("  Initialized: %v\n", kc.Initialized))
+		w.WriteString(fmt.Sprintf("  App Version: %s (%s)\n", kc.AppVersion, kc.AppVersionHex))
+		w.WriteString(fmt.Sprintf("  LEE Mode: %v\n", kc.LEEMode))
+		w.WriteString(fmt.Sprintf("  Key Initialized: %v\n", kc.HasMasterKey))
+		if kc.KeyUID != "" {
+			w.WriteString(fmt.Sprintf("  Key UID: %s\n", kc.KeyUID))
+		}
+		w.WriteString("  Capabilities:\n")
+		for _, cap := range kc.Capabilities {
+			w.WriteString(fmt.Sprintf("    %s\n", cap))
+		}
+		if kc.InstanceUID != "" {
+			w.WriteString(fmt.Sprintf("  Instance UID: %s\n", kc.InstanceUID))
+		}
+		if kc.AvailableSlots != nil {
+			w.WriteString(fmt.Sprintf("  Available pairing slots: %d\n", *kc.AvailableSlots))
+		}
+		if kc.Certificate != "" {
+			w.WriteString(fmt.Sprintf("  Certificate: %s\n", kc.Certificate))
+			if kc.IdentityPubKey != "" {
+				w.WriteString(fmt.Sprintf("  Identity public key: %s\n", kc.IdentityPubKey))
+			}
+		}
+		if kc.CertVerification != "" {
+			w.WriteString(fmt.Sprintf("  Certificate verification error: %s\n", kc.CertVerification))
+		}
+	}
+
+	w.WriteString("Cash Applet:\n")
+	cash := r.Cash
+	if !cash.Installed {
+		w.WriteString("  Installed: false\n")
+	} else {
+		w.WriteString("  Installed: true\n")
+		w.WriteString(fmt.Sprintf("  PublicKey: %s\n", cash.PublicKey))
+		if cash.Address != "" {
+			w.WriteString(fmt.Sprintf("  Address: %s\n", cash.Address))
+		}
+		w.WriteString(fmt.Sprintf("  Version: %s\n", cash.Version))
+	}
+	return w.String()
 }
 
 // KeycardInfo holds keycard applet info.
@@ -86,16 +188,168 @@ type AppStatusResult struct {
 	KeyPath        string `json:"key_path"`
 }
 
+func (r AppStatusResult) Format() string {
+	return fmt.Sprintf("PIN retry count: %d\nPUK retry count: %d\nKey initialized: %v\nKey path: %s\n",
+		r.PinRetryCount, r.PUKRetryCount, r.KeyInitialized, r.KeyPath)
+}
+
 // PairingResult holds pairing information.
 type PairingResult struct {
 	PairingKey   string `json:"pairing_key"`
 	PairingIndex int    `json:"pairing_index"`
 }
 
-// KeyResult holds key generation/loading results.
-type KeyResult struct {
-	KeyUID string `json:"key_uid,omitempty"`
-	KeyID  string `json:"key_id,omitempty"`
+func (r PairingResult) Format() string {
+	return fmt.Sprintf("Pairing key: %s\nPairing index: %d\n", r.PairingKey, r.PairingIndex)
+}
+
+// KeyGenerateResult — "generate-key"
+type KeyGenerateResult struct {
+	KeyUID string `json:"key_uid"`
+}
+
+func (r KeyGenerateResult) Format() string {
+	return fmt.Sprintf("Key generated. UID: %s\n", r.KeyUID)
+}
+
+// KeyLoadResult — "load-seed"
+type KeyLoadResult struct {
+	KeyID string `json:"key_id"`
+}
+
+func (r KeyLoadResult) Format() string {
+	return fmt.Sprintf("Seed loaded. Key ID: %s\n", r.KeyID)
+}
+
+// InitResult — "init" (no "Card initialized." prefix)
+type InitResult struct {
+	Pin             string `json:"pin"`
+	Puk             string `json:"puk"`
+	PairingPassword string `json:"pairing_password,omitempty"`
+}
+
+func (r InitResult) Format() string {
+	var w strings.Builder
+	w.WriteString(fmt.Sprintf("PIN: %s\n", r.Pin))
+	w.WriteString(fmt.Sprintf("PUK: %s\n", r.Puk))
+	if r.PairingPassword != "" {
+		w.WriteString(fmt.Sprintf("Pairing password: %s\n", r.PairingPassword))
+	}
+	return w.String()
+}
+
+// KeycardSelectResult — "keycard-select" (shell-only)
+type KeycardSelectResult struct {
+	Installed   bool   `json:"installed"`
+	Initialized bool   `json:"initialized"`
+	KeyUID      string `json:"key_uid"`
+	AppVersion  string `json:"app_version"`
+}
+
+func (r KeycardSelectResult) Format() string {
+	return fmt.Sprintf("Installed: %v\nInitialized: %v\nKey Initialized: %v\nVersion: %s\nKeyUID: %s\n",
+		r.Installed, r.Initialized, r.KeyUID != "", r.AppVersion, r.KeyUID)
+}
+
+// CashSelectResult — "cash-select" (shell-only)
+type CashSelectResult struct {
+	Installed bool   `json:"installed"`
+	PublicKey string `json:"public_key"`
+	Version   string `json:"version"`
+}
+
+func (r CashSelectResult) Format() string {
+	return fmt.Sprintf("Installed: %v\nPublicKey: %s\nVersion: %s\n",
+		r.Installed, r.PublicKey, r.Version)
+}
+
+// GPStatusResult — "gp-get-status"
+type GPStatusResult struct {
+	Lifecycle string `json:"lifecycle"`
+}
+
+func (r GPStatusResult) Format() string {
+	return fmt.Sprintf("Card status: %s\n", r.Lifecycle)
+}
+
+// ActionResult — simple confirmation messages
+type ActionResult struct {
+	Message string `json:"message"`
+}
+
+func (r ActionResult) Format() string {
+	return r.Message + "\n"
+}
+
+// UnpairResult — "unpair" (includes index)
+type UnpairResult struct {
+	Index int `json:"index"`
+}
+
+func (r UnpairResult) Format() string {
+	return fmt.Sprintf("Unpaired (index: %d)\n", r.Index)
+}
+
+// StoreDataResult — "store-data"
+type StoreDataResult struct {
+	Type  string `json:"type"`
+	Bytes int    `json:"bytes"`
+}
+
+func (r StoreDataResult) Format() string {
+	return fmt.Sprintf("Data stored (%s, %d bytes)\n", r.Type, r.Bytes)
+}
+
+// SetNDEFResult — "set-ndef"
+type SetNDEFResult struct {
+	Bytes int `json:"bytes"`
+}
+
+func (r SetNDEFResult) Format() string {
+	return fmt.Sprintf("NDEF set (%d bytes)\n", r.Bytes)
+}
+
+// SetSecretsResult — "keycard-set-secrets" (shell-only)
+type SetSecretsResult struct {
+	Pin             string `json:"pin"`
+	Puk             string `json:"puk"`
+	PairingPassword string `json:"pairing_password"`
+}
+
+func (r SetSecretsResult) Format() string {
+	return fmt.Sprintf("Secrets set (PIN: %s, PUK: %s, Pairing: %s)\n",
+		r.Pin, r.Puk, r.PairingPassword)
+}
+
+// SetPairingResult — "keycard-set-pairing" (shell-only)
+type SetPairingResult struct {
+	PairingKey   string `json:"pairing_key"`
+	PairingIndex int    `json:"pairing_index"`
+}
+
+func (r SetPairingResult) Format() string {
+	return fmt.Sprintf("Pairing set (key: %s, index: %d)\n",
+		r.PairingKey, r.PairingIndex)
+}
+
+// LEEKeyResult — "export-lee-key"
+type LEEKeyResult struct {
+	Key  string `json:"key"`
+	Path string `json:"path"`
+}
+
+func (r LEEKeyResult) Format() string {
+	return fmt.Sprintf("LEE key: %s\n", r.Key)
+}
+
+// BIP85KeyResult — "export-bip85"
+type BIP85KeyResult struct {
+	Key  string `json:"key"`
+	Path string `json:"path"`
+}
+
+func (r BIP85KeyResult) Format() string {
+	return fmt.Sprintf("BIP85 key: %s\n", r.Key)
 }
 
 // ExportedKeyResult holds exported key data.
@@ -107,23 +361,58 @@ type ExportedKeyResult struct {
 	Path       string `json:"path,omitempty"`
 }
 
+func (r ExportedKeyResult) Format() string {
+	var w strings.Builder
+	if r.PrivateKey != "" {
+		w.WriteString(fmt.Sprintf("Private key: %s\n", r.PrivateKey))
+	}
+	w.WriteString(fmt.Sprintf("Public key: %s\n", r.PublicKey))
+	if r.ChainCode != "" {
+		w.WriteString(fmt.Sprintf("Chain code: %s\n", r.ChainCode))
+	}
+	if r.Address != "" {
+		w.WriteString(fmt.Sprintf("Address: %s\n", r.Address))
+	}
+	if r.Path != "" {
+		w.WriteString(fmt.Sprintf("Path: %s\n", r.Path))
+	}
+	return w.String()
+}
+
 // SignatureResult holds signature data.
 type SignatureResult struct {
-	R           string `json:"signature_r"`
-	S           string `json:"signature_s"`
-	V           int    `json:"signature_v"`
+	R            string `json:"signature_r"`
+	S            string `json:"signature_s"`
+	V            int    `json:"signature_v"`
 	ETHSignature string `json:"eth_signature"`
-	PublicKey   string `json:"public_key"`
-	Address     string `json:"address"`
-	Path        string `json:"path,omitempty"`
-	File        string `json:"file,omitempty"`
+	PublicKey    string `json:"public_key"`
+	Address      string `json:"address"`
+	Path         string `json:"path,omitempty"`
+	File         string `json:"file,omitempty"`
+}
+
+func (r SignatureResult) Format() string {
+	var w strings.Builder
+	w.WriteString(fmt.Sprintf("Signature R: %s\n", r.R))
+	w.WriteString(fmt.Sprintf("Signature S: %s\n", r.S))
+	w.WriteString(fmt.Sprintf("Signature V: %d\n", r.V))
+	w.WriteString(fmt.Sprintf("ETH Signature: %s\n", r.ETHSignature))
+	w.WriteString(fmt.Sprintf("Public key: %s\n", r.PublicKey))
+	if r.Address != "" {
+		w.WriteString(fmt.Sprintf("Address: %s\n", r.Address))
+	}
+	return w.String()
 }
 
 // DataResult holds stored/retrieved data.
 type DataResult struct {
-	Type string `json:"type"`
-	Data string `json:"data,omitempty"`
-	Bytes int   `json:"bytes,omitempty"`
+	Type  string `json:"type"`
+	Data  string `json:"data,omitempty"`
+	Bytes int    `json:"bytes,omitempty"`
+}
+
+func (r DataResult) Format() string {
+	return fmt.Sprintf("Data (%s): %s\n", r.Type, r.Data)
 }
 
 // ChallengeResult holds a random challenge.
@@ -131,9 +420,17 @@ type ChallengeResult struct {
 	Challenge string `json:"challenge"`
 }
 
+func (r ChallengeResult) Format() string {
+	return fmt.Sprintf("Challenge: %s\n", r.Challenge)
+}
+
 // NameResult holds card display name.
 type NameResult struct {
 	Name string `json:"name"`
+}
+
+func (r NameResult) Format() string {
+	return fmt.Sprintf("Card name: %s\n", r.Name)
 }
 
 // IdentifyResult holds card identification result.
@@ -142,14 +439,26 @@ type IdentifyResult struct {
 	PublicKey  string `json:"public_key"`
 }
 
+func (r IdentifyResult) Format() string {
+	return fmt.Sprintf("Identification OK (public key: %s)\n", r.PublicKey)
+}
+
 // SecureChannelVersionResult holds the secure channel version.
 type SecureChannelVersionResult struct {
 	Version string `json:"secure_channel_version"`
 }
 
+func (r SecureChannelVersionResult) Format() string {
+	return fmt.Sprintf("Secure channel version: %s\n", r.Version)
+}
+
 // MnemonicResult holds generated mnemonic indexes.
 type MnemonicResult struct {
 	Indexes []int `json:"mnemonic_indexes"`
+}
+
+func (r MnemonicResult) Format() string {
+	return fmt.Sprintf("Mnemonic indexes: %v\n", r.Indexes)
 }
 
 // ---------------------------------------------------------------------------
@@ -583,112 +892,6 @@ func doCashSign(cashKC *keycard.CashCommandSet, data []byte) (*types.Signature, 
 }
 
 // ---------------------------------------------------------------------------
-// Output formatting — shared between CLI and shell
-// ---------------------------------------------------------------------------
-
-// formatSignature prints a signature in human-readable format.
-func formatSignature(w *strings.Builder, sig *types.Signature) {
-	res := newSignatureResult(sig)
-	w.WriteString(fmt.Sprintf("Signature R: 0x%s\n", res.R[2:]))
-	w.WriteString(fmt.Sprintf("Signature S: 0x%s\n", res.S[2:]))
-	w.WriteString(fmt.Sprintf("Signature V: %d\n", res.V))
-	w.WriteString(fmt.Sprintf("ETH Signature: %s\n", res.ETHSignature))
-	w.WriteString(fmt.Sprintf("Public key: 0x%s\n", res.PublicKey[2:]))
-	if res.Address != "" {
-		w.WriteString(fmt.Sprintf("Address: %s\n", res.Address))
-	}
-}
-
-// formatSignatureShell prints a signature in shell format (uppercase labels).
-func formatSignatureShell(write func(string), sig *types.Signature) {
-	res := newSignatureResult(sig)
-	write(fmt.Sprintf("SIGNATURE R: %s\n", res.R))
-	write(fmt.Sprintf("SIGNATURE S: %s\n", res.S))
-	write(fmt.Sprintf("SIGNATURE V: %x\n", byte(res.V)))
-	write(fmt.Sprintf("ETH SIGNATURE: %s\n", res.ETHSignature))
-	write(fmt.Sprintf("PUBLIC KEY: %s\n", res.PublicKey))
-	write(fmt.Sprintf("ADDRESS: %s\n\n", res.Address))
-}
-
-// formatKeycardInfo prints card info in human-readable format.
-func formatKeycardInfo(w *strings.Builder, result *KeycardInfoResult) {
-	kc := result.Keycard
-	w.WriteString("Keycard Applet:\n")
-	if !kc.Installed {
-		w.WriteString("  Installed: false\n")
-	} else {
-		w.WriteString("  Installed: true\n")
-		w.WriteString(fmt.Sprintf("  Initialized: %v\n", kc.Initialized))
-		w.WriteString(fmt.Sprintf("  App Version: %s (%s)\n", kc.AppVersion, kc.AppVersionHex))
-		w.WriteString(fmt.Sprintf("  LEE Mode: %v\n", kc.LEEMode))
-		w.WriteString(fmt.Sprintf("  Key Initialized: %v\n", kc.HasMasterKey))
-		if kc.KeyUID != "" {
-			w.WriteString(fmt.Sprintf("  Key UID: %s\n", kc.KeyUID))
-		}
-		w.WriteString("  Capabilities:\n")
-		for _, cap := range kc.Capabilities {
-			w.WriteString(fmt.Sprintf("    %s\n", cap))
-		}
-		if kc.InstanceUID != "" {
-			w.WriteString(fmt.Sprintf("  Instance UID: %s\n", kc.InstanceUID))
-		}
-		if kc.AvailableSlots != nil {
-			w.WriteString(fmt.Sprintf("  Available pairing slots: %d\n", *kc.AvailableSlots))
-		}
-		if kc.Certificate != "" {
-			w.WriteString(fmt.Sprintf("  Certificate: %s\n", kc.Certificate))
-			if kc.IdentityPubKey != "" {
-				w.WriteString(fmt.Sprintf("  Identity public key: %s\n", kc.IdentityPubKey))
-			}
-		}
-		if kc.CertVerification != "" {
-			w.WriteString(fmt.Sprintf("  Certificate verification error: %s\n", kc.CertVerification))
-		}
-	}
-
-	w.WriteString("Cash Applet:\n")
-	cash := result.Cash
-	if !cash.Installed {
-		w.WriteString("  Installed: false\n")
-	} else {
-		w.WriteString("  Installed: true\n")
-		w.WriteString(fmt.Sprintf("  PublicKey: %s\n", cash.PublicKey))
-		if cash.Address != "" {
-			w.WriteString(fmt.Sprintf("  Address: %s\n", cash.Address))
-		}
-		w.WriteString(fmt.Sprintf("  Version: %s\n", cash.Version))
-	}
-}
-
-// formatKeycardInfoShell prints card info in shell format.
-func formatKeycardInfoShell(write func(string), result *KeycardInfoResult) {
-	kc := result.Keycard
-	write("Keycard Applet:\n")
-	if !kc.Installed {
-		write("  Installed: false\n")
-	} else {
-		write(fmt.Sprintf("  Installed: true\n"))
-		write(fmt.Sprintf("  Initialized: %v\n", kc.Initialized))
-		write(fmt.Sprintf("  App Version: %s (%s)\n", kc.AppVersion, kc.AppVersionHex))
-		write(fmt.Sprintf("  LEE Mode: %v\n", kc.LEEMode))
-		write(fmt.Sprintf("  Key Initialized: %v\n", kc.HasMasterKey))
-		if kc.KeyUID != "" {
-			write(fmt.Sprintf("  Key UID: %s\n", kc.KeyUID))
-		}
-	}
-
-	write("Cash Applet:\n")
-	cash := result.Cash
-	if !cash.Installed {
-		write("  Installed: false\n")
-	} else {
-		write(fmt.Sprintf("  Installed: true\n"))
-		write(fmt.Sprintf("  PublicKey: %s\n", cash.PublicKey))
-		write(fmt.Sprintf("  Version: %s\n", cash.Version))
-	}
-}
-
-// ---------------------------------------------------------------------------
 // BIP39 mnemonic validation (shared between CLI and shell)
 // ---------------------------------------------------------------------------
 
@@ -718,7 +921,7 @@ func containsBIP39Word(word string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Shell-specific helpers
+// Shell context
 // ---------------------------------------------------------------------------
 
 // shellCtx holds the card channels and session state for shell commands.
@@ -731,11 +934,19 @@ type shellCtx struct {
 	write   func(string)
 }
 
-// shellResult is the return type for registered shell commands.
-type shellResult = map[string]interface{}
+// shellOutput holds both typed result and formatted text for a shell command.
+type shellOutput struct {
+	Result Result // typed result (implements Format())
+	Text   string // for text output
+}
+
+// newShellOutput creates a shellOutput from a typed result.
+func newShellOutput(r Result) *shellOutput {
+	return &shellOutput{Result: r, Text: r.Format()}
+}
 
 // shellFn is the signature for a registered shell command.
-type shellFn = func(ctx *shellCtx, args []string) (shellResult, error)
+type shellFn = func(ctx *shellCtx, args []string) (*shellOutput, error)
 
 // shellCommand defines a command registered in the shell.
 type shellCommand struct {
@@ -764,32 +975,4 @@ func parseHexShell(str string) ([]byte, error) {
 		str = str[2:]
 	}
 	return hex.DecodeString(str)
-}
-
-// shellSignatureResult converts a SignatureResult to shellResult format.
-func shellSignatureResult(sig *types.Signature) shellResult {
-	res := newSignatureResult(sig)
-	result := shellResult{
-		"signature_r":   res.R,
-		"signature_s":   res.S,
-		"signature_v":   res.V,
-		"eth_signature": res.ETHSignature,
-		"public_key":    res.PublicKey,
-		"address":       res.Address,
-	}
-	return result
-}
-
-// shellSignatureResultWithPath like shellSignatureResult but adds path.
-func shellSignatureResultWithPath(sig *types.Signature, path string) shellResult {
-	result := shellSignatureResult(sig)
-	result["path"] = path
-	return result
-}
-
-// shellSignatureResultWithFile like shellSignatureResult but adds file.
-func shellSignatureResultWithFile(sig *types.Signature, file string) shellResult {
-	result := shellSignatureResult(sig)
-	result["file"] = file
-	return result
 }

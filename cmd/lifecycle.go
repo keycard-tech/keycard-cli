@@ -162,61 +162,7 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	if cmd.Bool("json") {
-		return internal.PrintJSON(result)
-	}
-
-	formatKeycardInfoStdout(result)
-	return nil
-}
-
-func formatKeycardInfoStdout(result *KeycardInfoResult) {
-	kc := result.Keycard
-	fmt.Println("Keycard Applet:")
-	if !kc.Installed {
-		fmt.Println("  Installed: false")
-	} else {
-		fmt.Println("  Installed: true")
-		fmt.Printf("  Initialized: %v\n", kc.Initialized)
-		fmt.Printf("  App Version: %s (%s)\n", kc.AppVersion, kc.AppVersionHex)
-		fmt.Printf("  LEE Mode: %v\n", kc.LEEMode)
-		fmt.Printf("  Key Initialized: %v\n", kc.HasMasterKey)
-		if kc.KeyUID != "" {
-			fmt.Printf("  Key UID: %s\n", kc.KeyUID)
-		}
-		fmt.Println("  Capabilities:")
-		for _, cap := range kc.Capabilities {
-			fmt.Printf("    %s\n", cap)
-		}
-		if kc.InstanceUID != "" {
-			fmt.Printf("  Instance UID: %s\n", kc.InstanceUID)
-		}
-		if kc.AvailableSlots != nil {
-			fmt.Printf("  Available pairing slots: %d\n", *kc.AvailableSlots)
-		}
-		if kc.Certificate != "" {
-			fmt.Printf("  Certificate: %s\n", kc.Certificate)
-			if kc.IdentityPubKey != "" {
-				fmt.Printf("  Identity public key: %s\n", kc.IdentityPubKey)
-			}
-		}
-		if kc.CertVerification != "" {
-			fmt.Printf("  Certificate verification error: %s\n", kc.CertVerification)
-		}
-	}
-
-	fmt.Println("Cash Applet:")
-	cash := result.Cash
-	if !cash.Installed {
-		fmt.Println("  Installed: false")
-		return
-	}
-	fmt.Println("  Installed: true")
-	fmt.Printf("  PublicKey: %s\n", cash.PublicKey)
-	if cash.Address != "" {
-		fmt.Printf("  Address: %s\n", cash.Address)
-	}
-	fmt.Printf("  Version: %s\n", cash.Version)
+	return PrintResultCLI(cmd, result)
 }
 
 func cmdInstall(ctx context.Context, cmd *cli.Command) error {
@@ -315,13 +261,14 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			return initErr
 		}
 
-		fmt.Println("Card initialized.")
-		fmt.Printf("PIN: %s\n", secrets.Pin)
-		fmt.Printf("PUK: %s\n", secrets.Puk)
-		if !v2 {
-			fmt.Printf("Pairing password: %s\n", secrets.PairingPass)
+		result := InitResult{
+			Pin: secrets.Pin,
+			Puk: secrets.Puk,
 		}
-		return nil
+		if !v2 {
+			result.PairingPassword = secrets.PairingPass
+		}
+		return PrintResultCLI(cmd, result)
 	})
 }
 
@@ -348,7 +295,6 @@ func cmdFactoryReset(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		fmt.Println("Card factory reset complete")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Card factory reset complete"})
 	})
 }

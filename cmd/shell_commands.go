@@ -108,26 +108,23 @@ func RegisterShellCommands() []shellCommand {
 // Shell-only commands
 // ---------------------------------------------------------------------------
 
-func shellCashSelect(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellCashSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	info, err := doCashSelect(ctx.cashKC)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Installed: %v\n", info.Installed))
-	ctx.write(fmt.Sprintf("PublicKey: %x\n", info.PublicKey))
-	ctx.write(fmt.Sprintf("Version: %x\n\n", info.Version))
-	return shellResult{
-		"installed":  info.Installed,
-		"public_key": "0x" + hex.EncodeToString(info.PublicKey),
-		"version":    "0x" + hex.EncodeToString(info.Version),
-	}, nil
+	return newShellOutput(CashSelectResult{
+		Installed: info.Installed,
+		PublicKey: "0x" + hex.EncodeToString(info.PublicKey),
+		Version:   "0x" + hex.EncodeToString(info.Version),
+	}), nil
 }
 
 // ---------------------------------------------------------------------------
 // GP shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellGPSendAPDU(ctx *shellCtx, args []string) (shellResult, error) {
+func shellGPSendAPDU(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -142,44 +139,45 @@ func shellGPSendAPDU(ctx *shellCtx, args []string) (shellResult, error) {
 	if resp.Sw != apdu.SwOK {
 		return nil, apdu.NewErrBadResponse(resp.Sw, "unexpected response")
 	}
-	return shellResult{
-		"sw":   fmt.Sprintf("0x%04x", resp.Sw),
-		"data": "0x" + hex.EncodeToString(resp.Data),
-	}, nil
+	return newShellOutput(GPResult{
+		SW:      resp.Sw,
+		Data:    resp.Data,
+		SWStr:   fmt.Sprintf("0x%04x", resp.Sw),
+		DataHex: "0x" + hex.EncodeToString(resp.Data),
+	}), nil
 }
 
-func shellGPSelect(ctx *shellCtx, args []string) (shellResult, error) {
+func shellGPSelect(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 0, 1); err != nil {
 		return nil, err
 	}
 	var aid []byte
+	var aidStr string
 	if len(args) == 1 {
 		var err error
 		aid, err = hex.DecodeString(args[0])
 		if err != nil {
 			return nil, err
 		}
+		aidStr = args[0]
 	}
 	if err := doGPSelect(ctx.gp, aid); err != nil {
 		return nil, err
 	}
 	if aid != nil {
-		ctx.write(fmt.Sprintf("Selected AID: %s\n", args[0]))
-		return shellResult{"selected_aid": args[0]}, nil
+		return newShellOutput(ActionResult{Message: "Selected AID: " + aidStr}), nil
 	}
-	ctx.write("Selected ISD\n")
-	return shellResult{"selected": "isd"}, nil
+	return newShellOutput(ActionResult{Message: "Selected ISD"}), nil
 }
 
-func shellGPOpenSecureChannel(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellGPOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.gp.OpenSecureChannel(); err != nil {
 		return nil, err
 	}
-	ctx.write("GP secure channel opened\n")
-	return shellResult{"secure_channel": "opened"}, nil
+	return newShellOutput(ActionResult{Message: "GP secure channel opened"}), nil
 }
 
-func shellGPDelete(ctx *shellCtx, args []string) (shellResult, error) {
+func shellGPDelete(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -190,11 +188,10 @@ func shellGPDelete(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := ctx.gp.DeleteObject(aid); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Deleted AID: %s\n", args[0]))
-	return shellResult{"deleted_aid": args[0]}, nil
+	return newShellOutput(ActionResult{Message: "Deleted AID: " + args[0]}), nil
 }
 
-func shellGPLoad(ctx *shellCtx, args []string) (shellResult, error) {
+func shellGPLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -210,11 +207,10 @@ func shellGPLoad(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := ctx.gp.LoadPackage(f, pkgAID, func(int, int) {}); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Package loaded: %s\n", args[1]))
-	return shellResult{"package_aid": args[1], "loaded": true}, nil
+	return newShellOutput(ActionResult{Message: "Package loaded: " + args[1]}), nil
 }
 
-func shellGPInstallForInstall(ctx *shellCtx, args []string) (shellResult, error) {
+func shellGPInstallForInstall(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 3, 4); err != nil {
 		return nil, err
 	}
@@ -240,48 +236,35 @@ func shellGPInstallForInstall(ctx *shellCtx, args []string) (shellResult, error)
 	if err := ctx.gp.InstallForInstall(pkgAID, appletAID, instanceAID, params); err != nil {
 		return nil, err
 	}
-	ctx.write("Install for install complete\n")
-	return shellResult{
-		"package_aid":  args[0],
-		"applet_aid":   args[1],
-		"instance_aid": args[2],
-		"installed":    true,
-	}, nil
+	return newShellOutput(ActionResult{Message: "Install for install complete"}), nil
 }
 
-func shellGPGetStatus(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellGPGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	status, err := doGPGetStatus(ctx.gp)
 	if err != nil {
 		return nil, err
 	}
-	lifecycle := status.LifeCycle()
-	ctx.write(fmt.Sprintf("CARD STATUS: %s\n\n", lifecycle))
-	return shellResult{"lifecycle": lifecycle}, nil
+	return newShellOutput(GPStatusResult{Lifecycle: status.LifeCycle()}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Keycard lifecycle shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardSelect(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	info, err := doKeycardSelect(ctx.kc)
 	if err != nil {
 		// Still show info even if select errored (V4+ cert issues)
 	}
-	ctx.write(fmt.Sprintf("Installed: %v\n", info.Installed))
-	ctx.write(fmt.Sprintf("Initialized: %v\n", info.Initialized))
-	ctx.write(fmt.Sprintf("Key Initialized: %v\n", len(info.KeyUID) > 0))
-	ctx.write(fmt.Sprintf("Version: %x\n", info.AppVersion()))
-	ctx.write(fmt.Sprintf("KeyUID: %x\n\n", info.KeyUID))
-	return shellResult{
-		"installed":     info.Installed,
-		"initialized":   info.Initialized,
-		"key_uid":       "0x" + hex.EncodeToString(info.KeyUID),
-		"app_version":   fmt.Sprintf("0x%04x", info.AppVersion()),
-	}, err
+	return newShellOutput(KeycardSelectResult{
+		Installed:   info.Installed,
+		Initialized: info.Initialized,
+		KeyUID:      "0x" + hex.EncodeToString(info.KeyUID),
+		AppVersion:  fmt.Sprintf("0x%04x", info.AppVersion()),
+	}), err
 }
 
-func shellKeycardInfo(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardInfo(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	// Re-select to get fresh info
 	var selectErr error
 	if selectErr = ctx.kc.Select(); selectErr != nil {
@@ -304,44 +287,10 @@ func shellKeycardInfo(ctx *shellCtx, _ []string) (shellResult, error) {
 		return nil, err
 	}
 
-	formatKeycardInfoShell(ctx.write, result)
-
-	// Build JSON result manually
-	kcMap := shellResult{
-		"installed":                result.Keycard.Installed,
-		"initialized":              result.Keycard.Initialized,
-		"app_version":              result.Keycard.AppVersion,
-		"app_version_hex":          result.Keycard.AppVersionHex,
-		"has_master_key":           result.Keycard.HasMasterKey,
-		"key_uid":                  result.Keycard.KeyUID,
-		"secure_channel_version":   result.Keycard.SecureChannelVersion,
-		"capabilities":             result.Keycard.Capabilities,
-		"pin_retries":              result.Keycard.PINRetries,
-		"lee_mode":                 result.Keycard.LEEMode,
-		"has_factory_reset_cap":    result.Keycard.HasFactoryResetCap,
-		"instance_uid":             result.Keycard.InstanceUID,
-		"certificate":              result.Keycard.Certificate,
-		"identity_pub_key":         result.Keycard.IdentityPubKey,
-		"certificate_verification": result.Keycard.CertVerification,
-	}
-	if result.Keycard.AvailableSlots != nil {
-		kcMap["available_slots"] = *result.Keycard.AvailableSlots
-	}
-
-	cashMap := shellResult{
-		"installed":  result.Cash.Installed,
-		"public_key": result.Cash.PublicKey,
-		"address":    result.Cash.Address,
-		"version":    result.Cash.Version,
-	}
-
-	return shellResult{
-		"keycard": kcMap,
-		"cash":    cashMap,
-	}, nil
+	return newShellOutput(result), nil
 }
 
-func shellKeycardInit(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardInit(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if ctx.kc.AppInfo() == nil || !ctx.kc.AppInfo().Installed {
 		return nil, errors.New("keycard applet not installed")
 	}
@@ -360,20 +309,18 @@ func shellKeycardInit(ctx *shellCtx, _ []string) (shellResult, error) {
 		return nil, err
 	}
 
-	ctx.write(fmt.Sprintf("PIN: %s\n", ctx.secrets.Pin()))
-	ctx.write(fmt.Sprintf("PUK: %s\n", ctx.secrets.Puk()))
 	v2 := internal.IsSecureChannelV2(ctx.kc)
-	if !v2 {
-		ctx.write(fmt.Sprintf("PAIRING PASSWORD: %s\n\n", ctx.secrets.PairingPass()))
+	result := InitResult{
+		Pin: ctx.secrets.Pin(),
+		Puk: ctx.secrets.Puk(),
 	}
-	return shellResult{
-		"pin":              ctx.secrets.Pin(),
-		"puk":              ctx.secrets.Puk(),
-		"pairing_password": ctx.secrets.PairingPass(),
-	}, nil
+	if !v2 {
+		result.PairingPassword = ctx.secrets.PairingPass()
+	}
+	return newShellOutput(result), nil
 }
 
-func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	info := ctx.kc.AppInfo()
 	if !info.Installed {
 		return nil, errors.New("keycard applet not installed")
@@ -384,44 +331,34 @@ func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (shellResult, error) {
 	if err := ctx.kc.FactoryReset(); err != nil {
 		return nil, err
 	}
-	ctx.write("Card factory reset complete\n")
-	return shellResult{"factory_reset": true}, nil
+	return newShellOutput(ActionResult{Message: "Card factory reset complete"}), nil
 }
 
-func shellKeycardGetStatus(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	result, err := doKeycardGetStatusResult(ctx.kc)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("STATUS - PIN RETRY COUNT: %d\n", result.PinRetryCount))
-	ctx.write(fmt.Sprintf("STATUS - PUK RETRY COUNT: %d\n", result.PUKRetryCount))
-	ctx.write(fmt.Sprintf("STATUS - KEY INITIALIZED: %v\n", result.KeyInitialized))
-	ctx.write(fmt.Sprintf("STATUS - KEY PATH: %v\n\n", result.KeyPath))
-	return shellResult{
-		"pin_retry_count":  result.PinRetryCount,
-		"puk_retry_count":  result.PUKRetryCount,
-		"key_initialized":  result.KeyInitialized,
-		"key_path":         result.KeyPath,
-	}, nil
+	return newShellOutput(result), nil
 }
 
 // ---------------------------------------------------------------------------
 // Secrets / pairing (shell session state)
 // ---------------------------------------------------------------------------
 
-func shellKeycardSetSecrets(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSetSecrets(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 3); err != nil {
 		return nil, err
 	}
 	ctx.secrets = keycard.NewSecrets(args[0], args[1], args[2])
-	return shellResult{
-		"pin":              args[0],
-		"puk":              args[1],
-		"pairing_password": args[2],
-	}, nil
+	return newShellOutput(SetSecretsResult{
+		Pin:             args[0],
+		Puk:             args[1],
+		PairingPassword: args[2],
+	}), nil
 }
 
-func shellKeycardSetPairing(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -436,17 +373,17 @@ func shellKeycardSetPairing(ctx *shellCtx, args []string) (shellResult, error) {
 	var keyArr [32]byte
 	copy(keyArr[:], key)
 	ctx.kc.SetPairing(types.NewPairing(keyArr, uint8(index)))
-	return shellResult{
-		"pairing_key":   args[0],
-		"pairing_index": int(index),
-	}, nil
+	return newShellOutput(SetPairingResult{
+		PairingKey:   args[0],
+		PairingIndex: int(index),
+	}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Pairing shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardPair(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if ctx.secrets == nil {
 		return nil, errors.New("cannot pair without setting secrets")
 	}
@@ -455,15 +392,13 @@ func shellKeycardPair(ctx *shellCtx, _ []string) (shellResult, error) {
 		return nil, err
 	}
 	key := pairing.Key()
-	ctx.write(fmt.Sprintf("PAIRING KEY: %x\n", key[:]))
-	ctx.write(fmt.Sprintf("PAIRING INDEX: %v\n\n", pairing.Index()))
-	return shellResult{
-		"pairing_key":   fmt.Sprintf("0x%x", key[:]),
-		"pairing_index": pairing.Index(),
-	}, nil
+	return newShellOutput(PairingResult{
+		PairingKey:   fmt.Sprintf("0x%x", key[:]),
+		PairingIndex: int(pairing.Index()),
+	}), nil
 }
 
-func shellKeycardUnpair(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -477,133 +412,123 @@ func shellKeycardUnpair(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := ctx.kc.Unpair(uint8(indexInt)); err != nil {
 		return nil, err
 	}
-	ctx.write("UNPAIRED\n\n")
-	return shellResult{"unpaired_index": int(indexInt)}, nil
+	return newShellOutput(UnpairResult{Index: int(indexInt)}), nil
 }
 
-func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if internal.IsSecureChannelV2(ctx.kc) {
 		return nil, errors.New("unpair-others is not needed for Secure Channel V2 cards")
 	}
 	if err := ctx.kc.UnpairOthers(); err != nil {
 		return nil, err
 	}
-	ctx.write("All other pairings removed\n")
-	return shellResult{"unpaired_others": true}, nil
+	return newShellOutput(ActionResult{Message: "All other pairings removed"}), nil
 }
 
-func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if ctx.kc.Pairing() == nil {
 		return nil, errors.New("cannot open secure channel without setting pairing info")
 	}
 	if err := ctx.kc.OpenSecureChannel(); err != nil {
 		return nil, err
 	}
-	ctx.write("Secure channel opened\n")
-	return shellResult{"secure_channel": "opened"}, nil
+	return newShellOutput(ActionResult{Message: "Secure channel opened"}), nil
 }
 
-func shellKeycardSecureChannelVersion(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardSecureChannelVersion(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	version, err := doKeycardSecureChannelVersion(ctx.kc)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Secure channel version: %s\n", version))
-	return shellResult{"secure_channel_version": version}, nil
+	return newShellOutput(SecureChannelVersionResult{Version: version}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Credentials shell commands
 // ---------------------------------------------------------------------------
 
-func shellKeycardVerifyPIN(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardVerifyPIN(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.VerifyPIN(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write("PIN verified\n")
-	return shellResult{"pin_verified": true}, nil
+	return newShellOutput(ActionResult{Message: "PIN verified successfully"}), nil
 }
 
-func shellKeycardChangePIN(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardChangePIN(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.ChangePIN(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write("PIN changed\n")
-	return shellResult{"pin_changed": true}, nil
+	return newShellOutput(ActionResult{Message: "PIN changed successfully"}), nil
 }
 
-func shellKeycardChangePUK(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardChangePUK(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.ChangePUK(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write("PUK changed\n")
-	return shellResult{"puk_changed": true}, nil
+	return newShellOutput(ActionResult{Message: "PUK changed successfully"}), nil
 }
 
-func shellKeycardUnblockPin(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardUnblockPin(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.UnblockPIN(args[0], args[1]); err != nil {
 		return nil, err
 	}
-	ctx.write("PIN unblocked\n")
-	return shellResult{"pin_unblocked": true}, nil
+	return newShellOutput(ActionResult{Message: "PIN unblocked successfully"}), nil
 }
 
-func shellKeycardChangePairingSecret(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardChangePairingSecret(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.ChangePairingSecret(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write("Pairing secret changed\n")
-	return shellResult{"pairing_secret_changed": true}, nil
+	return newShellOutput(ActionResult{Message: "Pairing password changed successfully"}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Key management shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardGenerateKey(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardGenerateKey(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	keyUID, err := doKeycardGenerateKey(ctx.kc)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("KEY UID %x\n\n", keyUID))
-	return shellResult{"key_uid": "0x" + hex.EncodeToString(keyUID)}, nil
+	return newShellOutput(KeyGenerateResult{
+		KeyUID: "0x" + hex.EncodeToString(keyUID),
+	}), nil
 }
 
-func shellKeycardRemoveKey(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardRemoveKey(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.kc.RemoveKey(); err != nil {
 		return nil, err
 	}
-	ctx.write("KEY REMOVED\n\n")
-	return shellResult{"key_removed": true}, nil
+	return newShellOutput(ActionResult{Message: "Key removed"}), nil
 }
 
-func shellKeycardDeriveKey(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardDeriveKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := ctx.kc.DeriveKey(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Key derived at path: %s\n", args[0]))
-	return shellResult{"path": args[0], "derived": true}, nil
+	return newShellOutput(ActionResult{Message: "Key derived at path: " + args[0]}), nil
 }
 
-func shellKeycardLoadSeed(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -615,11 +540,12 @@ func shellKeycardLoadSeed(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("KEY ID %x\n\n", keyID))
-	return shellResult{"key_id": "0x" + hex.EncodeToString(keyID)}, nil
+	return newShellOutput(KeyLoadResult{
+		KeyID: "0x" + hex.EncodeToString(keyID),
+	}), nil
 }
 
-func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -630,11 +556,10 @@ func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := ctx.kc.LoadLEEKey(key); err != nil {
 		return nil, err
 	}
-	ctx.write("LEE key loaded\n")
-	return shellResult{"lee_key_loaded": true}, nil
+	return newShellOutput(ActionResult{Message: "LEE key loaded"}), nil
 }
 
-func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -643,18 +568,10 @@ func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (shellResult, err
 		return nil, err
 	}
 	result := doKeycardExportKeyResult(exported, false, args[0])
-	ctx.write(fmt.Sprintf("PUBLIC KEY: %s\n", result.PublicKey))
-	if result.Address != "" {
-		ctx.write(fmt.Sprintf("ADDRESS: %s\n", result.Address))
-	}
-	return shellResult{
-		"public_key": result.PublicKey,
-		"address":    result.Address,
-		"path":       result.Path,
-	}, nil
+	return newShellOutput(result), nil
 }
 
-func shellKeycardExportKeyPrivate(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardExportKeyPrivate(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -663,20 +580,10 @@ func shellKeycardExportKeyPrivate(ctx *shellCtx, args []string) (shellResult, er
 		return nil, err
 	}
 	result := doKeycardExportKeyResult(exported, true, args[0])
-	ctx.write(fmt.Sprintf("PRIVATE KEY: %s\n", result.PrivateKey))
-	ctx.write(fmt.Sprintf("PUBLIC KEY: %s\n", result.PublicKey))
-	if result.Address != "" {
-		ctx.write(fmt.Sprintf("ADDRESS: %s\n", result.Address))
-	}
-	return shellResult{
-		"private_key": result.PrivateKey,
-		"public_key":  result.PublicKey,
-		"address":     result.Address,
-		"path":        result.Path,
-	}, nil
+	return newShellOutput(result), nil
 }
 
-func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -685,20 +592,10 @@ func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (shellResult, e
 		return nil, err
 	}
 	result := doKeycardExportExtendedKeyResult(exported, args[0])
-	ctx.write(fmt.Sprintf("PUBLIC KEY: %s\n", result.PublicKey))
-	ctx.write(fmt.Sprintf("CHAIN CODE: %s\n", result.ChainCode))
-	if result.Address != "" {
-		ctx.write(fmt.Sprintf("ADDRESS: %s\n", result.Address))
-	}
-	return shellResult{
-		"public_key": result.PublicKey,
-		"chain_code": result.ChainCode,
-		"address":    result.Address,
-		"path":       result.Path,
-	}, nil
+	return newShellOutput(result), nil
 }
 
-func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -706,11 +603,13 @@ func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (shellResult, error)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("LEE KEY: %s\n", "0x"+hex.EncodeToString(key)))
-	return shellResult{"key": "0x" + hex.EncodeToString(key), "path": args[0]}, nil
+	return newShellOutput(LEEKeyResult{
+		Key:  "0x" + hex.EncodeToString(key),
+		Path: args[0],
+	}), nil
 }
 
-func shellKeycardExportBIP85(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -722,15 +621,17 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (shellResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("BIP85 KEY: %s\n", "0x"+hex.EncodeToString(key)))
-	return shellResult{"key": "0x" + hex.EncodeToString(key), "path": args[0]}, nil
+	return newShellOutput(BIP85KeyResult{
+		Key:  "0x" + hex.EncodeToString(key),
+		Path: args[0],
+	}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Signing shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardSign(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSign(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -742,11 +643,10 @@ func shellKeycardSign(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResult(sig), nil
+	return newShellOutput(newSignatureResult(sig)), nil
 }
 
-func shellKeycardSignWithPath(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSignWithPath(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -758,11 +658,12 @@ func shellKeycardSignWithPath(ctx *shellCtx, args []string) (shellResult, error)
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResultWithPath(sig, args[1]), nil
+	result := newSignatureResult(sig)
+	result.Path = args[1]
+	return newShellOutput(result), nil
 }
 
-func shellKeycardSignMessage(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSignMessage(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if len(args) < 1 {
 		return nil, errors.New("keycard-sign-message requires at least 1 parameter")
 	}
@@ -771,11 +672,10 @@ func shellKeycardSignMessage(ctx *shellCtx, args []string) (shellResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResult(sig), nil
+	return newShellOutput(newSignatureResult(sig)), nil
 }
 
-func shellKeycardSignFile(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSignFile(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -788,11 +688,12 @@ func shellKeycardSignFile(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResultWithFile(sig, args[0]), nil
+	result := newSignatureResult(sig)
+	result.File = args[0]
+	return newShellOutput(result), nil
 }
 
-func shellKeycardSignPinless(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSignPinless(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -804,11 +705,10 @@ func shellKeycardSignPinless(ctx *shellCtx, args []string) (shellResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResult(sig), nil
+	return newShellOutput(newSignatureResult(sig)), nil
 }
 
-func shellKeycardSignMessagePinless(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSignMessagePinless(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if len(args) < 1 {
 		return nil, errors.New("keycard-sign-message-pinless requires at least 1 parameter")
 	}
@@ -817,15 +717,14 @@ func shellKeycardSignMessagePinless(ctx *shellCtx, args []string) (shellResult, 
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResult(sig), nil
+	return newShellOutput(newSignatureResult(sig)), nil
 }
 
 // ---------------------------------------------------------------------------
 // Pinless path shell commands
 // ---------------------------------------------------------------------------
 
-func shellKeycardSetPinlessPath(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSetPinlessPath(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -835,26 +734,24 @@ func shellKeycardSetPinlessPath(ctx *shellCtx, args []string) (shellResult, erro
 	if err := ctx.kc.SetPinlessPath(args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Pinless path set: %s\n", args[0]))
-	return shellResult{"pinless_path": args[0]}, nil
+	return newShellOutput(ActionResult{Message: "Pinless path set: " + args[0]}), nil
 }
 
-func shellKeycardResetPinlessPath(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardResetPinlessPath(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if internal.IsAppletV4Plus(ctx.kc) {
 		return nil, errors.New("pinless signing is not available on applet version 4.0+")
 	}
 	if err := ctx.kc.ResetPinlessPath(); err != nil {
 		return nil, err
 	}
-	ctx.write("Pinless path reset\n")
-	return shellResult{"pinless_path_reset": true}, nil
+	return newShellOutput(ActionResult{Message: "Pinless path reset"}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Mnemonic shell commands
 // ---------------------------------------------------------------------------
 
-func shellKeycardGenerateMnemonic(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardGenerateMnemonic(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -866,15 +763,14 @@ func shellKeycardGenerateMnemonic(ctx *shellCtx, args []string) (shellResult, er
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("MNEMONIC INDEXES %v\n\n", indexes))
-	return shellResult{"mnemonic_indexes": indexes}, nil
+	return newShellOutput(MnemonicResult{Indexes: indexes}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Data management shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardGetData(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardGetData(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -886,14 +782,13 @@ func shellKeycardGetData(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Data (%s): 0x%x\n", args[0], data))
-	return shellResult{
-		"type": args[0],
-		"data": "0x" + hex.EncodeToString(data),
-	}, nil
+	return newShellOutput(DataResult{
+		Type: args[0],
+		Data: "0x" + hex.EncodeToString(data),
+	}), nil
 }
 
-func shellKeycardStoreData(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardStoreData(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -908,11 +803,13 @@ func shellKeycardStoreData(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := doKeycardStoreData(ctx.kc, dataType, data); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Data stored (%s, %d bytes)\n", args[0], len(data)))
-	return shellResult{"type": args[0], "bytes": len(data), "stored": true}, nil
+	return newShellOutput(StoreDataResult{
+		Type:  args[0],
+		Bytes: len(data),
+	}), nil
 }
 
-func shellKeycardGetChallenge(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -924,11 +821,12 @@ func shellKeycardGetChallenge(ctx *shellCtx, args []string) (shellResult, error)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Challenge: 0x%x\n", challenge))
-	return shellResult{"challenge": "0x" + hex.EncodeToString(challenge)}, nil
+	return newShellOutput(ChallengeResult{
+		Challenge: "0x" + hex.EncodeToString(challenge),
+	}), nil
 }
 
-func shellKeycardSetNDEF(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSetNDEF(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -939,39 +837,36 @@ func shellKeycardSetNDEF(ctx *shellCtx, args []string) (shellResult, error) {
 	if err := ctx.kc.SetNDEF(ndefData); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("NDEF set (%d bytes)\n", len(ndefData)))
-	return shellResult{"bytes": len(ndefData), "set": true}, nil
+	return newShellOutput(SetNDEFResult{Bytes: len(ndefData)}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Metadata shell commands (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardGetName(ctx *shellCtx, _ []string) (shellResult, error) {
+func shellKeycardGetName(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	name, err := doKeycardGetName(ctx.kc)
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Card name: %s\n", name))
-	return shellResult{"name": name}, nil
+	return newShellOutput(NameResult{Name: name}), nil
 }
 
-func shellKeycardSetName(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardSetName(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
 	if err := doKeycardSetName(ctx.kc, args[0]); err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("Card name set: %s\n", args[0]))
-	return shellResult{"name": args[0]}, nil
+	return newShellOutput(ActionResult{Message: "Card name set: " + args[0]}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Identify shell command (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellKeycardIdentify(ctx *shellCtx, args []string) (shellResult, error) {
+func shellKeycardIdentify(ctx *shellCtx, args []string) (*shellOutput, error) {
 	var expectedPubKey []byte
 	if len(args) == 1 {
 		var err error
@@ -984,18 +879,17 @@ func shellKeycardIdentify(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx.write(fmt.Sprintf("IDENTIFICATION OK (public key: %x)\n\n", pubkey))
-	return shellResult{
-		"identified": true,
-		"public_key": "0x" + hex.EncodeToString(pubkey),
-	}, nil
+	return newShellOutput(IdentifyResult{
+		Identified: true,
+		PublicKey:  "0x" + hex.EncodeToString(pubkey),
+	}), nil
 }
 
 // ---------------------------------------------------------------------------
 // Cash shell command (delegate to core)
 // ---------------------------------------------------------------------------
 
-func shellCashSign(ctx *shellCtx, args []string) (shellResult, error) {
+func shellCashSign(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -1007,8 +901,7 @@ func shellCashSign(ctx *shellCtx, args []string) (shellResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	formatSignatureShell(ctx.write, sig)
-	return shellSignatureResult(sig), nil
+	return newShellOutput(newSignatureResult(sig)), nil
 }
 
 // ---------------------------------------------------------------------------

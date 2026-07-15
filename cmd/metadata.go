@@ -2,12 +2,9 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	keycard "github.com/status-im/keycard-go"
 	"github.com/urfave/cli/v3"
-
-	"github.com/status-im/keycard-cli/internal"
 )
 
 // MetadataCommands returns the metadata management command group.
@@ -39,23 +36,16 @@ func cmdGetName(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(NameResult{Name: name})
-		}
-
-		fmt.Printf("Card name: %s\n", name)
-		return nil
+		return PrintResultCLI(cmd, NameResult{Name: name})
 	})
 }
 
 func cmdSetName(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if err := doKeycardSetName(kc, cmd.String("name")); err != nil {
+		name := cmd.String("name")
+		if err := doKeycardSetName(kc, name); err != nil {
 			return err
 		}
-
-		fmt.Printf("Card name set: %s\n", cmd.String("name"))
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Card name set: " + name})
 	})
 }

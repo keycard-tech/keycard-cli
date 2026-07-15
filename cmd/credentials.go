@@ -77,8 +77,7 @@ func CredentialsCommands() []*cli.Command {
 
 func cmdVerifyPIN(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		fmt.Println("PIN verified successfully")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "PIN verified successfully"})
 	})
 }
 
@@ -87,8 +86,7 @@ func cmdChangePIN(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.ChangePIN(cmd.String("new")); err != nil {
 			return err
 		}
-		fmt.Println("PIN changed successfully")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "PIN changed successfully"})
 	})
 }
 
@@ -97,8 +95,7 @@ func cmdChangePUK(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.ChangePUK(cmd.String("new")); err != nil {
 			return err
 		}
-		fmt.Println("PUK changed successfully")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "PUK changed successfully"})
 	})
 }
 
@@ -115,8 +112,7 @@ func cmdUnblockPIN(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.UnblockPIN(puk, newPIN); err != nil {
 			return err
 		}
-		fmt.Println("PIN unblocked successfully")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "PIN unblocked successfully"})
 	})
 }
 
@@ -128,7 +124,6 @@ func cmdChangePairingPassword(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.ChangePairingPassword(cmd.String("new")); err != nil {
 			return err
 		}
-		fmt.Println("Pairing password changed successfully")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Pairing password changed successfully"})
 	})
 }

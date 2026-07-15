@@ -44,8 +44,7 @@ func cmdSetPinlessPath(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		fmt.Printf("Pinless path set: %s\n", path)
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Pinless path set: " + path})
 	})
 }
 
@@ -59,7 +58,6 @@ func cmdResetPinlessPath(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		fmt.Println("Pinless path reset")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Pinless path reset"})
 	})
 }

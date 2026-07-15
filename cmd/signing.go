@@ -113,12 +113,13 @@ func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
-	content, err := os.ReadFile(cmd.String("file"))
+	filePath := cmd.String("file")
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("error reading file: %w", err)
 	}
 	hash := crypto.Keccak256(content)
-	return doSignCLI(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
+	return doSignCLIWithFile(cmd, hash, cmd.String("path"), cmd.String("algo"), false, filePath)
 }
 
 func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
@@ -148,7 +149,23 @@ func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) e
 		if err != nil {
 			return err
 		}
-		return outputSignature(cmd, sig)
+		return PrintResultCLI(cmd, newSignatureResult(sig))
+	})
+}
+
+func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless bool, file string) error {
+	authLevel := AuthPIN
+	if pinless {
+		authLevel = AuthNone
+	}
+	return runCard(cmd, authLevel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		sig, err := signWithParams(kc, data, path, algo, pinless)
+		if err != nil {
+			return err
+		}
+		result := newSignatureResult(sig)
+		result.File = file
+		return PrintResultCLI(cmd, result)
 	})
 }
 
@@ -166,29 +183,4 @@ func signWithParams(kc *keycard.CommandSet, data []byte, path, algo string, pinl
 		}
 	}
 	return doKeycardSign(kc, data)
-}
-
-func outputSignature(cmd interface{ Bool(string) bool }, sig *types.Signature) error {
-	result := newSignatureResult(sig)
-	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]interface{}{
-			"signature": map[string]interface{}{
-				"r":             result.R,
-				"s":             result.S,
-				"v":             result.V,
-				"eth_signature": result.ETHSignature,
-				"public_key":    result.PublicKey,
-				"address":       result.Address,
-			},
-		})
-	}
-	fmt.Printf("Signature R: %s\n", result.R)
-	fmt.Printf("Signature S: %s\n", result.S)
-	fmt.Printf("Signature V: %d\n", result.V)
-	fmt.Printf("ETH Signature: %s\n", result.ETHSignature)
-	fmt.Printf("Public key: %s\n", result.PublicKey)
-	if result.Address != "" {
-		fmt.Printf("Address: %s\n", result.Address)
-	}
-	return nil
 }

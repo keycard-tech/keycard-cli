@@ -66,16 +66,10 @@ func cmdPair(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		key := pairing.Key()
-		if cmd.Bool("json") {
-			return internal.PrintJSON(PairingResult{
-				PairingKey:   fmt.Sprintf("0x%x", key[:]),
-				PairingIndex: int(pairing.Index()),
-			})
-		}
-
-		fmt.Printf("Pairing key: 0x%x\n", key[:])
-		fmt.Printf("Pairing index: %d\n", pairing.Index())
-		return nil
+		return PrintResultCLI(cmd, PairingResult{
+			PairingKey:   fmt.Sprintf("0x%x", key[:]),
+			PairingIndex: int(pairing.Index()),
+		})
 	})
 }
 
@@ -90,8 +84,7 @@ func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		fmt.Printf("Unpaired (index: %d)\n", index)
-		return nil
+		return PrintResultCLI(cmd, UnpairResult{Index: int(index)})
 	})
 }
 
@@ -105,8 +98,7 @@ func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		fmt.Println("All other pairings removed")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "All other pairings removed"})
 	})
 }
 
@@ -117,11 +109,6 @@ func cmdSecureChannelVersion(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		if cmd.Bool("json") {
-			return internal.PrintJSON(SecureChannelVersionResult{Version: version})
-		}
-
-		fmt.Printf("Secure channel version: %s\n", version)
-		return nil
+		return PrintResultCLI(cmd, SecureChannelVersionResult{Version: version})
 	})
 }

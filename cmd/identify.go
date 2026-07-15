@@ -48,14 +48,9 @@ func cmdIdentify(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		if cmd.Bool("json") {
-			return internal.PrintJSON(IdentifyResult{
-				Identified: true,
-				PublicKey:  "0x" + hex.EncodeToString(pubkey),
-			})
-		}
-
-		fmt.Printf("Identification OK (public key: 0x%x)\n", pubkey)
-		return nil
+		return PrintResultCLI(cmd, IdentifyResult{
+			Identified: true,
+			PublicKey:  "0x" + hex.EncodeToString(pubkey),
+		})
 	})
 }

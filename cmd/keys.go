@@ -147,15 +147,9 @@ func cmdGenerateKey(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"key_uid": "0x" + hex.EncodeToString(keyUID),
-			})
-		}
-
-		fmt.Printf("Key generated. UID: 0x%x\n", keyUID)
-		return nil
+		return PrintResultCLI(cmd, KeyGenerateResult{
+			KeyUID: "0x" + hex.EncodeToString(keyUID),
+		})
 	})
 }
 
@@ -164,8 +158,7 @@ func cmdRemoveKey(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.RemoveKey(); err != nil {
 			return err
 		}
-		fmt.Println("Key removed")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Key removed"})
 	})
 }
 
@@ -175,8 +168,7 @@ func cmdDeriveKey(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.DeriveKey(path); err != nil {
 			return err
 		}
-		fmt.Printf("Key derived at path: %s\n", path)
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "Key derived at path: " + path})
 	})
 }
 
@@ -210,15 +202,9 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"key_id": "0x" + hex.EncodeToString(keyID),
-			})
-		}
-
-		fmt.Printf("Seed loaded. Key ID: 0x%x\n", keyID)
-		return nil
+		return PrintResultCLI(cmd, KeyLoadResult{
+			KeyID: "0x" + hex.EncodeToString(keyID),
+		})
 	})
 }
 
@@ -232,8 +218,7 @@ func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
 		if err := kc.LoadLEEKey(key); err != nil {
 			return err
 		}
-		fmt.Println("LEE key loaded")
-		return nil
+		return PrintResultCLI(cmd, ActionResult{Message: "LEE key loaded"})
 	})
 }
 
@@ -244,7 +229,7 @@ func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		result := doKeycardExportKeyResult(exported, false, cmd.String("path"))
-		return outputExportedKeyJSONOrPlain(cmd, result)
+		return PrintResultCLI(cmd, result)
 	})
 }
 
@@ -255,7 +240,7 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		result := doKeycardExportKeyResult(exported, true, cmd.String("path"))
-		return outputExportedKeyJSONOrPlain(cmd, result)
+		return PrintResultCLI(cmd, result)
 	})
 }
 
@@ -266,7 +251,7 @@ func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		result := doKeycardExportExtendedKeyResult(exported, cmd.String("path"))
-		return outputExportedExtendedKeyJSONOrPlain(cmd, result)
+		return PrintResultCLI(cmd, result)
 	})
 }
 
@@ -277,15 +262,10 @@ func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"key": "0x" + hex.EncodeToString(key),
-			})
-		}
-
-		fmt.Printf("LEE key: 0x%x\n", key)
-		return nil
+		return PrintResultCLI(cmd, LEEKeyResult{
+			Key:  "0x" + hex.EncodeToString(key),
+			Path: path,
+		})
 	})
 }
 
@@ -298,40 +278,9 @@ func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-
-		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"key": "0x" + hex.EncodeToString(key),
-			})
-		}
-
-		fmt.Printf("BIP85 key: 0x%x\n", key)
-		return nil
+		return PrintResultCLI(cmd, BIP85KeyResult{
+			Key:  "0x" + hex.EncodeToString(key),
+			Path: path,
+		})
 	})
-}
-
-func outputExportedKeyJSONOrPlain(cmd interface{ Bool(string) bool }, result ExportedKeyResult) error {
-	if cmd.Bool("json") {
-		return internal.PrintJSON(result)
-	}
-	if result.PrivateKey != "" {
-		fmt.Printf("Private key: %s\n", result.PrivateKey)
-	}
-	fmt.Printf("Public key: %s\n", result.PublicKey)
-	if result.Address != "" {
-		fmt.Printf("Address: %s\n", result.Address)
-	}
-	return nil
-}
-
-func outputExportedExtendedKeyJSONOrPlain(cmd interface{ Bool(string) bool }, result ExportedKeyResult) error {
-	if cmd.Bool("json") {
-		return internal.PrintJSON(result)
-	}
-	fmt.Printf("Public key: %s\n", result.PublicKey)
-	fmt.Printf("Chain code: %s\n", result.ChainCode)
-	if result.Address != "" {
-		fmt.Printf("Address: %s\n", result.Address)
-	}
-	return nil
 }

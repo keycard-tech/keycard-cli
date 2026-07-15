@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -35,7 +36,7 @@ func ShellCommand() *cli.Command {
 			&cli.BoolFlag{
 				Name:    "json",
 				Aliases: []string{"j"},
-				Usage:   "Output all results as a single JSON object at the end",
+				Usage:   "Output each command result as a JSON line (JSONL)",
 			},
 		},
 		Action: cmdShell,
@@ -86,7 +87,6 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
 		},
 		out:        out,
 		jsonOutput: jsonOutput,
-		results:    make(map[string]map[string]interface{}),
 	}
 
 	// Build command map from registry
@@ -122,25 +122,12 @@ type shellRunner struct {
 	commands   map[string]shellFn
 	out        *bytes.Buffer
 	jsonOutput bool
-	results    map[string]map[string]interface{}
-	resultIdx  int
 }
 
 func (s *shellRunner) flushOut() {
-	if s.jsonOutput {
-		internal.PrintJSON(s.results)
-	} else {
+	if !s.jsonOutput {
 		io.Copy(os.Stdout, s.out)
 	}
-}
-
-func (s *shellRunner) recordResult(cmdName string, result map[string]interface{}) {
-	if !s.jsonOutput {
-		return
-	}
-	key := fmt.Sprintf("%s_%d", cmdName, s.resultIdx)
-	s.resultIdx++
-	s.results[key] = result
 }
 
 func (s *shellRunner) evalLine(rawLine string) error {
@@ -159,16 +146,46 @@ func (s *shellRunner) evalLine(rawLine string) error {
 
 	// Handle echo specially (built-in, not in registry)
 	if parts[0] == "echo" {
-		s.ctx.write(fmt.Sprintf("> %s\n", strings.Join(parts[1:], " ")))
+		msg := strings.Join(parts[1:], " ")
+		if s.jsonOutput {
+			line := map[string]interface{}{
+				"command": "echo",
+				"output":  msg,
+			}
+			data, _ := json.Marshal(line)
+			fmt.Fprintln(os.Stdout, string(data))
+		} else {
+			s.ctx.write(fmt.Sprintf("> %s\n", msg))
+		}
 		return nil
 	}
 
 	if cmd, ok := s.commands[parts[0]]; ok {
-		result, err := cmd(s.ctx, parts[1:])
-		if result != nil {
-			s.recordResult(parts[0], result)
+		output, err := cmd(s.ctx, parts[1:])
+		if err != nil {
+			if s.jsonOutput {
+				line := map[string]interface{}{
+					"command": parts[0],
+					"error":   err.Error(),
+				}
+				data, _ := json.Marshal(line)
+				fmt.Fprintln(os.Stderr, string(data))
+			}
+			return err
 		}
-		return err
+		if output != nil {
+			if s.jsonOutput {
+				line := map[string]interface{}{
+					"command": parts[0],
+					"result":  output.Result,
+				}
+				data, _ := json.Marshal(line)
+				fmt.Fprintln(os.Stdout, string(data))
+			} else {
+				s.ctx.write(output.Text)
+			}
+		}
+		return nil
 	}
 
 	return fmt.Errorf("command not found: %s", parts[0])
