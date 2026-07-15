@@ -429,7 +429,7 @@ func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, err
 	if ctx.kc.Pairing() == nil {
 		return nil, errors.New("cannot open secure channel without setting pairing info")
 	}
-	if err := ctx.kc.OpenSecureChannel(); err != nil {
+	if err := ctx.kc.AutoOpenSecureChannel(); err != nil {
 		return nil, err
 	}
 	return newShellOutput(ActionResult{Message: "Secure channel opened"}), nil

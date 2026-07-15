@@ -108,7 +108,6 @@ func main() {
 			cmds = append(cmds, cmd.IdentifyCommand())
 			cmds = append(cmds, cmd.CashCommand())
 			cmds = append(cmds, cmd.ShellCommand())
-			cmds = append(cmds, cmd.GPCommands()...)
 			return cmds
 		}(),
 	}

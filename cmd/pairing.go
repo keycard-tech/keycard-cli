@@ -41,8 +41,8 @@ func PairingCommands() []*cli.Command {
 			Action: cmdUnpair,
 		},
 		{
-			Name:   "unpair-others",
-			Usage:  "Unpair all other pairings (V1 only)",
+			Name:   "unpair-all",
+			Usage:  "Unpair all pairings (V1 only)",
 			Action: cmdUnpairOthers,
 		},
 		{

@@ -45,12 +45,12 @@ func LifecycleCommands() []*cli.Command {
 				&cli.BoolFlag{
 					Name:  "cash-applet",
 					Usage: "install cash applet",
-					Value: true,
+					Value: false,
 				},
 				&cli.BoolFlag{
 					Name:  "ndef-applet",
 					Usage: "install NDEF applet",
-					Value: true,
+					Value: false,
 				},
 				&cli.BoolFlag{
 					Name:    "force",
