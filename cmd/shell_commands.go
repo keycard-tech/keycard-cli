@@ -101,6 +101,10 @@ func RegisterShellCommands() []shellCommand {
 
 		// Cash
 		{name: "cash-sign", usage: "Sign with the Cash applet", handler: shellCashSign},
+
+		// Ident
+		{name: "ident-select", usage: "Select the Ident applet", handler: shellIdentSelect},
+		{name: "ident-load", usage: "Load an identity certificate (no arg=test, arg=hex)", handler: shellIdentLoad},
 	}
 }
 
@@ -305,7 +309,13 @@ func shellKeycardInit(ctx *shellCtx, _ []string) (*shellOutput, error) {
 		ctx.secrets = secrets
 	}
 
-	if err := doKeycardInit(ctx.kc, ctx.secrets); err != nil {
+	genSecrets, err := keycard.GenerateSecrets()
+	if err != nil {
+		return nil, err
+	}			
+	altPin := genSecrets.Pin()
+
+	if err := doKeycardInit(ctx.kc, ctx.secrets.Pin(), ctx.secrets.Puk(), ctx.secrets.PairingPass(), altPin, 3, 5); err != nil {
 		return nil, err
 	}
 
@@ -914,6 +924,44 @@ func shellCashSign(ctx *shellCtx, args []string) (*shellOutput, error) {
 		return nil, err
 	}
 	return newShellOutput(newSignatureResult(sig)), nil
+}
+
+// ---------------------------------------------------------------------------
+// Ident shell commands
+// ---------------------------------------------------------------------------
+
+func shellIdentSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
+	if err := ctx.identKC.Select(); err != nil {
+		return nil, err
+	}
+	return newShellOutput(ActionResult{Message: "Ident applet selected"}), nil
+}
+
+func shellIdentLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
+	var data []byte
+	var err error
+
+	if len(args) == 0 {
+		data, err = doGenerateTestCertificate()
+		if err != nil {
+			return nil, err
+		}
+	} else if len(args) == 1 {
+		data, err = parseHexShell(args[0])
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, errors.New("ident-load takes 0 or 1 argument (hex string, or none for test)")
+	}
+
+	if err := ctx.identKC.Select(); err != nil {
+		return nil, err
+	}
+	if _, err := ctx.identKC.StoreData(data); err != nil {
+		return nil, err
+	}
+	return newShellOutput(LoadIdentResult{Bytes: len(data)}), nil
 }
 
 // ---------------------------------------------------------------------------

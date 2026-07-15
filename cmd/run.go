@@ -122,6 +122,21 @@ func runCash(cmd *cli.Command, fn func(cashKC *keycard.CashCommandSet, cmd *cli.
 	return fn(cashKC, cmd)
 }
 
+// runIdent connects to the card, creates an Ident CommandSet, then executes
+// fn. No secure channel or PIN required.
+func runIdent(cmd *cli.Command, fn func(identKC *keycard.IdentCommandSet, cmd *cli.Command) error) error {
+	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ch := keycardio.NewNormalChannel(card)
+	identKC := keycard.NewIdentCommandSet(ch)
+
+	return fn(identKC, cmd)
+}
+
 // newCommandSet creates a keycard.CommandSet, optionally using a custom CA
 // public key and/or whitelisted card identity key from CLI flags.
 func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {

@@ -52,12 +52,6 @@ func main() {
 		Version: version,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "log-level",
-				Aliases: []string{"l"},
-				Value:   "info",
-				Usage:   `Log level, one of: "error", "warn", "info", "debug"`,
-			},
-			&cli.StringFlag{
 				Name:  "pin",
 				Usage: "PIN (or KEYCARD_PIN env var)",
 			},
@@ -107,6 +101,7 @@ func main() {
 			cmds = append(cmds, cmd.MetadataCommands()...)
 			cmds = append(cmds, cmd.IdentifyCommand())
 			cmds = append(cmds, cmd.CashCommand())
+			cmds = append(cmds, cmd.IdentCommands()...)
 			cmds = append(cmds, cmd.ShellCommand())
 			return cmds
 		}(),

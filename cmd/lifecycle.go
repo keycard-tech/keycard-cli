@@ -43,6 +43,11 @@ func LifecycleCommands() []*cli.Command {
 					Value: true,
 				},
 				&cli.BoolFlag{
+					Name:  "ident-applet",
+					Usage: "install ident applet",
+					Value: true,
+				},
+				&cli.BoolFlag{
 					Name:  "cash-applet",
 					Usage: "install cash applet",
 					Value: false,
@@ -99,10 +104,12 @@ func LifecycleCommands() []*cli.Command {
 				&cli.UintFlag{
 					Name:  "pin-retries",
 					Usage: "Number of PIN retries allowed",
+					Value: 3,
 				},
 				&cli.UintFlag{
 					Name:  "puk-retries",
 					Usage: "Number of PUK retries allowed",
+					Value: 5,
 				},
 			},
 			Action: cmdInit,
@@ -180,7 +187,7 @@ func cmdInstall(ctx context.Context, cmd *cli.Command) error {
 	defer f.Close()
 
 	i := internal.NewInstaller(card)
-	return i.Install(f, cmd.Bool("force"), cmd.Bool("keycard-applet"), cmd.Bool("cash-applet"), cmd.Bool("ndef-applet"), cmd.String("ndef"))
+	return i.Install(f, cmd.Bool("force"), cmd.Bool("keycard-applet"), cmd.Bool("ident-applet"), cmd.Bool("cash-applet"), cmd.Bool("ndef-applet"), cmd.String("ndef"))
 }
 
 func cmdDelete(ctx context.Context, cmd *cli.Command) error {
@@ -240,22 +247,18 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		v2 := internal.IsSecureChannelV2(kc)
-		var initErr error
-
-		if cmd.IsSet("alt-pin") || cmd.IsSet("pin-retries") || cmd.IsSet("puk-retries") {
-			initErr = kc.InitWithOptions(
-				secrets.Pin,
-				cmd.String("alt-pin"),
-				secrets.Puk,
-				secrets.PairingPass,
-				uint8(cmd.Uint("pin-retries")),
-				uint8(cmd.Uint("puk-retries")),
-			)
+		var altPin string
+		if !cmd.IsSet("alt-pin") {
+			genSecrets, err := keycard.GenerateSecrets()
+			if err != nil {
+				return err
+			}			
+			altPin = genSecrets.Pin()
 		} else {
-			kcSecrets := keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass)
-			initErr = doKeycardInit(kc, kcSecrets)
+			altPin = cmd.String("alt-pin")
 		}
+
+		initErr := doKeycardInit(kc, secrets.Pin, secrets.Puk, secrets.PairingPass, altPin, uint8(cmd.Uint("pin-retries")), uint8(cmd.Uint("puk-retries")))
 
 		if initErr != nil {
 			return initErr
@@ -265,7 +268,7 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			Pin: secrets.Pin,
 			Puk: secrets.Puk,
 		}
-		if !v2 {
+		if !internal.IsSecureChannelV2(kc) {
 			result.PairingPassword = secrets.PairingPass
 		}
 		return PrintResultCLI(cmd, result)

@@ -72,6 +72,7 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc := keycard.NewCommandSet(ch)
 	cashKC := keycard.NewCashCommandSet(ch)
+	identKC := keycard.NewIdentCommandSet(ch)
 	gp := globalplatform.NewCommandSet(ch)
 
 	out := new(bytes.Buffer)
@@ -79,11 +80,12 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
 
 	shell := &shellRunner{
 		ctx: &shellCtx{
-			ch:     ch,
-			kc:     kc,
-			cashKC: cashKC,
-			gp:     gp,
-			write:  write,
+			ch:      ch,
+			kc:      kc,
+			cashKC:  cashKC,
+			identKC: identKC,
+			gp:      gp,
+			write:   write,
 		},
 		out:        out,
 		jsonOutput: jsonOutput,

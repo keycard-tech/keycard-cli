@@ -461,6 +461,15 @@ func (r MnemonicResult) Format() string {
 	return fmt.Sprintf("Mnemonic indexes: %v\n", r.Indexes)
 }
 
+// LoadIdentResult holds the result of loading an identity certificate.
+type LoadIdentResult struct {
+	Bytes int `json:"bytes"`
+}
+
+func (r LoadIdentResult) Format() string {
+	return fmt.Sprintf("Identity certificate loaded (%d bytes)\n", r.Bytes)
+}
+
 // ---------------------------------------------------------------------------
 // Helper: build SignatureResult from a types.Signature
 // ---------------------------------------------------------------------------
@@ -561,11 +570,12 @@ func doKeycardSelect(kc *keycard.CommandSet) (*types.ApplicationInfo, error) {
 }
 
 // doKeycardInit initializes the card. Handles V1 vs V2 automatically.
-func doKeycardInit(kc *keycard.CommandSet, secrets *keycard.Secrets) error {
+func doKeycardInit(kc *keycard.CommandSet, pin, puk, pairingPass, altPin string, pinRetries, pukRetries uint8) error {
 	if internal.IsSecureChannelV2(kc) {
-		return kc.InitV2(secrets.Pin(), secrets.Puk())
+		return kc.InitWithOptionsV2(pin, altPin, puk, pinRetries, pukRetries)
 	}
-	return kc.Init(secrets)
+	
+	return kc.InitWithOptions(pin, altPin, puk, pairingPass, pinRetries, pukRetries)
 }
 
 // doKeycardGetStatus returns application and key path status.
@@ -900,6 +910,7 @@ type shellCtx struct {
 	ch      types.Channel
 	kc      *keycard.CommandSet
 	cashKC  *keycard.CashCommandSet
+	identKC *keycard.IdentCommandSet
 	gp      *globalplatform.CommandSet
 	secrets *keycard.Secrets
 	write   func(string)
