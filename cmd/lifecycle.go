@@ -2,16 +2,13 @@ package cmd
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	keycard "github.com/status-im/keycard-go"
 	"github.com/status-im/keycard-go/apdu"
 	"github.com/status-im/keycard-go/globalplatform"
 	keycardio "github.com/status-im/keycard-go/io"
-	keycardtypes "github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
 
 	"github.com/status-im/keycard-cli/internal"
@@ -140,15 +137,11 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc := keycard.NewCommandSet(ch)
 
-	// For V4+ cards with invalid certificate, Select() will error but
-	// AppInfo is already populated. Catch the error so we can still display info.
 	var selectErr error
 	if selectErr = kc.Select(); selectErr != nil {
 		if e, ok := selectErr.(*apdu.ErrBadResponse); ok && e.Sw == globalplatform.SwFileNotFound {
 			// Applet not installed
 		} else {
-			// Non-SwFileNotFound error (e.g., certificate verification failure on V4+).
-			// If AppInfo is available, continue to display it.
 			if kc.AppInfo() == nil || !kc.AppInfo().Installed {
 				return selectErr
 			}
@@ -164,182 +157,66 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	return doInfo(kc, cashKC, selectErr, cmd)
-}
-
-func doInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selectErr error, cmd *cli.Command) error {
-	info := kc.AppInfo()
-	cashInfo := cashKC.CashApplicationInfo
-
-	appVersion := uint16(0)
-	if info != nil && info.Installed {
-		appVersion = info.AppVersion()
+	result, err := doKeycardInfo(kc, cashKC, selectErr)
+	if err != nil {
+		return err
 	}
-	isV4Plus := appVersion >= 0x0400
 
 	if cmd.Bool("json") {
-		type infoOut struct {
-			Keycard struct {
-				Installed            bool     `json:"installed"`
-				Initialized          bool     `json:"initialized"`
-				AppVersion           string   `json:"app_version,omitempty"`
-				AppVersionHex        string   `json:"app_version_hex,omitempty"`
-				HasMasterKey         bool     `json:"has_master_key"`
-				KeyUID               string   `json:"key_uid,omitempty"`
-				SecureChannelVersion string   `json:"secure_channel_version,omitempty"`
-				Capabilities         []string `json:"capabilities,omitempty"`
-				PINRetries           int      `json:"pin_retries,omitempty"`
-				LEEMode              bool     `json:"lee_mode"`
-				HasFactoryResetCap   bool     `json:"has_factory_reset_capability"`
-				// V1-V3 fields
-				InstanceUID      string `json:"instance_uid,omitempty"`
-				AvailableSlots   *int   `json:"available_slots,omitempty"`
-				// V4+ fields
-				Certificate      string `json:"certificate,omitempty"`
-				IdentityPubKey   string `json:"identity_pub_key,omitempty"`
-				CertVerification string `json:"certificate_verification_error,omitempty"`
-			} `json:"keycard"`
-			Cash struct {
-				Installed bool   `json:"installed"`
-				PublicKey string `json:"public_key,omitempty"`
-				Address   string `json:"address,omitempty"`
-				Version   string `json:"version,omitempty"`
-			} `json:"cash"`
-		}
-
-		out := infoOut{}
-		if info != nil && info.Installed {
-			out.Keycard.Installed = true
-			out.Keycard.Initialized = info.Initialized
-			out.Keycard.AppVersion = info.AppVersionString()
-			out.Keycard.AppVersionHex = fmt.Sprintf("0x%04x", info.AppVersion())
-			out.Keycard.LEEMode = info.IsLEEMode()
-			out.Keycard.HasFactoryResetCap = info.HasFactoryResetCapability()
-			if retries, ok := info.PINRetries(); ok {
-				out.Keycard.PINRetries = int(retries)
-			}
-			if len(info.KeyUID) > 0 {
-				out.Keycard.HasMasterKey = true
-				out.Keycard.KeyUID = "0x" + hex.EncodeToString(info.KeyUID)
-			}
-			if ver, ok := kc.SecureChannelVersion(); ok {
-				out.Keycard.SecureChannelVersion = fmt.Sprintf("v%d", ver+1)
-			}
-			if info.HasSecureChannelCapability() {
-				out.Keycard.Capabilities = append(out.Keycard.Capabilities, "secure-channel")
-			}
-			if info.HasKeyManagementCapability() {
-				out.Keycard.Capabilities = append(out.Keycard.Capabilities, "key-management")
-			}
-			if info.HasCredentialsManagementCapability() {
-				out.Keycard.Capabilities = append(out.Keycard.Capabilities, "credentials-management")
-			}
-			if info.HasNDEFCapability() {
-				out.Keycard.Capabilities = append(out.Keycard.Capabilities, "ndef")
-			}
-
-			// V1-V3 fields: InstanceUID and available pairing slots
-			if !isV4Plus {
-				if len(info.InstanceUID) > 0 {
-					out.Keycard.InstanceUID = "0x" + hex.EncodeToString(info.InstanceUID)
-				}
-				if len(info.AvailableSlots) > 0 {
-					slots := int(info.AvailableSlots[0])
-					out.Keycard.AvailableSlots = &slots
-				}
-			}
-
-			// V4+ fields: certificate and identity public key
-			if isV4Plus {
-				if len(info.CertData) > 0 {
-					out.Keycard.Certificate = hex.EncodeToString(info.CertData)
-					cert, err := keycardtypes.ParseCertificate(info.CertData)
-					if err == nil {
-						identPub := cert.IdentPub()
-						out.Keycard.IdentityPubKey = "0x" + hex.EncodeToString(identPub[:])
-					}
-				}
-				if selectErr != nil {
-					out.Keycard.CertVerification = selectErr.Error()
-				}
-			}
-		}
-
-		if cashInfo != nil && cashInfo.Installed {
-			out.Cash.Installed = true
-			out.Cash.PublicKey = "0x" + hex.EncodeToString(cashInfo.PublicKey)
-			out.Cash.Version = "0x" + hex.EncodeToString(cashInfo.Version)
-			if len(cashInfo.PublicKey) > 0 {
-				if pubkey, err := crypto.UnmarshalPubkey(cashInfo.PublicKey); err == nil {
-					out.Cash.Address = crypto.PubkeyToAddress(*pubkey).Hex()
-				}
-			}
-		}
-
-		return internal.PrintJSON(out)
+		return internal.PrintJSON(result)
 	}
 
-	// Human-readable output
+	formatKeycardInfoStdout(result)
+	return nil
+}
+
+func formatKeycardInfoStdout(result *KeycardInfoResult) {
+	kc := result.Keycard
 	fmt.Println("Keycard Applet:")
-	if info == nil || !info.Installed {
+	if !kc.Installed {
 		fmt.Println("  Installed: false")
 	} else {
-		fmt.Printf("  Installed: true\n")
-		fmt.Printf("  Initialized: %v\n", info.Initialized)
-		fmt.Printf("  App Version: %s (0x%04x)\n", info.AppVersionString(), info.AppVersion())
-		fmt.Printf("  LEE Mode: %v\n", info.IsLEEMode())
-		fmt.Printf("  Key Initialized: %v\n", len(info.KeyUID) > 0)
-		if len(info.KeyUID) > 0 {
-			fmt.Printf("  Key UID: 0x%x\n", info.KeyUID)
+		fmt.Println("  Installed: true")
+		fmt.Printf("  Initialized: %v\n", kc.Initialized)
+		fmt.Printf("  App Version: %s (%s)\n", kc.AppVersion, kc.AppVersionHex)
+		fmt.Printf("  LEE Mode: %v\n", kc.LEEMode)
+		fmt.Printf("  Key Initialized: %v\n", kc.HasMasterKey)
+		if kc.KeyUID != "" {
+			fmt.Printf("  Key UID: %s\n", kc.KeyUID)
 		}
-		fmt.Printf("  Capabilities:\n")
-		fmt.Printf("    Secure channel: %v\n", info.HasSecureChannelCapability())
-		fmt.Printf("    Key management: %v\n", info.HasKeyManagementCapability())
-		fmt.Printf("    Credentials Management: %v\n", info.HasCredentialsManagementCapability())
-		fmt.Printf("    NDEF: %v\n", info.HasNDEFCapability())
-		fmt.Printf("    Factory reset: %v\n", info.HasFactoryResetCapability())
-
-		// V1-V3 fields
-		if !isV4Plus {
-			if len(info.InstanceUID) > 0 {
-				fmt.Printf("  Instance UID: 0x%x\n", info.InstanceUID)
-			}
-			if len(info.AvailableSlots) > 0 {
-				fmt.Printf("  Available pairing slots: %d\n", info.AvailableSlots[0])
+		fmt.Println("  Capabilities:")
+		for _, cap := range kc.Capabilities {
+			fmt.Printf("    %s\n", cap)
+		}
+		if kc.InstanceUID != "" {
+			fmt.Printf("  Instance UID: %s\n", kc.InstanceUID)
+		}
+		if kc.AvailableSlots != nil {
+			fmt.Printf("  Available pairing slots: %d\n", *kc.AvailableSlots)
+		}
+		if kc.Certificate != "" {
+			fmt.Printf("  Certificate: %s\n", kc.Certificate)
+			if kc.IdentityPubKey != "" {
+				fmt.Printf("  Identity public key: %s\n", kc.IdentityPubKey)
 			}
 		}
-
-		// V4+ fields
-		if isV4Plus {
-			if len(info.CertData) > 0 {
-				fmt.Printf("  Certificate: %s\n", hex.EncodeToString(info.CertData))
-				cert, err := keycardtypes.ParseCertificate(info.CertData)
-				if err == nil {
-					fmt.Printf("  Identity public key: 0x%x\n", cert.IdentPub())
-				}
-			}
-			if selectErr != nil {
-				fmt.Printf("  Certificate verification error: %v\n", selectErr)
-			}
+		if kc.CertVerification != "" {
+			fmt.Printf("  Certificate verification error: %s\n", kc.CertVerification)
 		}
 	}
 
 	fmt.Println("Cash Applet:")
-	if cashInfo == nil || !cashInfo.Installed {
+	cash := result.Cash
+	if !cash.Installed {
 		fmt.Println("  Installed: false")
-		return nil
+		return
 	}
-
-	fmt.Printf("  Installed: true\n")
-	fmt.Printf("  PublicKey: 0x%x\n", cashInfo.PublicKey)
-	if len(cashInfo.PublicKey) > 0 {
-		if pubkey, err := crypto.UnmarshalPubkey(cashInfo.PublicKey); err == nil {
-			fmt.Printf("  Address: %s\n", crypto.PubkeyToAddress(*pubkey).Hex())
-		}
+	fmt.Println("  Installed: true")
+	fmt.Printf("  PublicKey: %s\n", cash.PublicKey)
+	if cash.Address != "" {
+		fmt.Printf("  Address: %s\n", cash.Address)
 	}
-	fmt.Printf("  Version: 0x%x\n", cashInfo.Version)
-
-	return nil
+	fmt.Printf("  Version: %s\n", cash.Version)
 }
 
 func cmdInstall(ctx context.Context, cmd *cli.Command) error {
@@ -362,7 +239,6 @@ func cmdInstall(ctx context.Context, cmd *cli.Command) error {
 
 func cmdDelete(ctx context.Context, cmd *cli.Command) error {
 	if !cmd.Bool("yes") {
-		// TODO: interactive confirmation
 		fmt.Print("This will delete all applets from the card. Continue? (y/N): ")
 		var resp string
 		fmt.Scanln(&resp)
@@ -396,14 +272,12 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("card already initialized")
 		}
 
-		// Resolve secrets
 		secrets := internal.ResolveSecrets(
 			cmd.String("pin"),
 			cmd.String("puk"),
 			cmd.String("pairing-password"),
 		)
 
-		// Generate if not provided
 		if secrets.Pin == "" || secrets.Puk == "" {
 			genSecrets, err := keycard.GenerateSecrets()
 			if err != nil {
@@ -424,7 +298,6 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 		var initErr error
 
 		if cmd.IsSet("alt-pin") || cmd.IsSet("pin-retries") || cmd.IsSet("puk-retries") {
-			// Use InitWithOptions
 			initErr = kc.InitWithOptions(
 				secrets.Pin,
 				cmd.String("alt-pin"),
@@ -433,10 +306,9 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 				uint8(cmd.Uint("pin-retries")),
 				uint8(cmd.Uint("puk-retries")),
 			)
-		} else if v2 {
-			initErr = kc.InitV2(secrets.Pin, secrets.Puk)
 		} else {
-			initErr = kc.Init(keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass))
+			kcSecrets := keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass)
+			initErr = doKeycardInit(kc, kcSecrets)
 		}
 
 		if initErr != nil {
@@ -446,7 +318,7 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 		fmt.Println("Card initialized.")
 		fmt.Printf("PIN: %s\n", secrets.Pin)
 		fmt.Printf("PUK: %s\n", secrets.Puk)
-		if !internal.IsSecureChannelV2(kc) {
+		if !v2 {
 			fmt.Printf("Pairing password: %s\n", secrets.PairingPass)
 		}
 		return nil

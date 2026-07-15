@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"strings"
 
 	keycard "github.com/status-im/keycard-go"
 	"github.com/urfave/cli/v3"
@@ -84,21 +83,21 @@ func DataCommands() []*cli.Command {
 }
 
 func cmdGetData(ctx context.Context, cmd *cli.Command) error {
-	dataType := parseDataType(cmd.String("type"))
-	if dataType < 0 {
-		return fmt.Errorf("invalid data type: %s (must be public, ndef, or cash)", cmd.String("type"))
+	dataType, err := parseDataType(cmd.String("type"))
+	if err != nil {
+		return err
 	}
 
 	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		data, err := kc.GetData(uint8(dataType))
+		data, err := doKeycardGetData(kc, dataType)
 		if err != nil {
 			return err
 		}
 
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"type": cmd.String("type"),
-				"data": "0x" + hex.EncodeToString(data),
+			return internal.PrintJSON(DataResult{
+				Type: cmd.String("type"),
+				Data: "0x" + hex.EncodeToString(data),
 			})
 		}
 
@@ -108,20 +107,18 @@ func cmdGetData(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
-	dataType := parseDataType(cmd.String("type"))
-	if dataType < 0 {
-		return fmt.Errorf("invalid data type: %s (must be public, ndef, or cash)", cmd.String("type"))
+	dataType, err := parseDataType(cmd.String("type"))
+	if err != nil {
+		return err
 	}
 
 	var data []byte
 	if hexData := cmd.String("hex"); hexData != "" {
-		var err error
 		data, err = internal.ParseHex(hexData)
 		if err != nil {
 			return fmt.Errorf("invalid hex data: %w", err)
 		}
 	} else if filePath := cmd.String("file"); filePath != "" {
-		var err error
 		data, err = os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf("error reading file: %w", err)
@@ -131,44 +128,13 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		// Auto-chunk if data > 240 bytes
-		if len(data) > 240 {
-			return doStoreDataChunked(kc, uint8(dataType), data)
-		}
-
-		if err := kc.StoreData(uint8(dataType), data); err != nil {
+		if err := doKeycardStoreData(kc, dataType, data); err != nil {
 			return err
 		}
 
 		fmt.Printf("Data stored (%s, %d bytes)\n", cmd.String("type"), len(data))
 		return nil
 	})
-}
-
-func doStoreDataChunked(kc *keycard.CommandSet, dataType uint8, data []byte) error {
-	chunkSize := 220
-	offset := uint16(0)
-
-	for i := 0; i < len(data); i += chunkSize {
-		end := i + chunkSize
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := data[i:end]
-
-		if offset > 0 {
-			if err := kc.StoreDataWithOffset(dataType, chunk, offset); err != nil {
-				return err
-			}
-		} else {
-			if err := kc.StoreData(dataType, chunk); err != nil {
-				return err
-			}
-		}
-		offset += uint16(len(chunk))
-	}
-
-	return nil
 }
 
 func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
@@ -181,8 +147,8 @@ func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"challenge": "0x" + hex.EncodeToString(challenge),
+			return internal.PrintJSON(ChallengeResult{
+				Challenge: "0x" + hex.EncodeToString(challenge),
 			})
 		}
 
@@ -220,42 +186,19 @@ func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
 
 func cmdGetStatus(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		appStatus, err := kc.GetStatusApplication()
-		if err != nil {
-			return err
-		}
-
-		keyStatus, err := kc.GetStatusKeyPath()
+		result, err := doKeycardGetStatusResult(kc)
 		if err != nil {
 			return err
 		}
 
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]interface{}{
-				"pin_retry_count": appStatus.PinRetryCount,
-				"puk_retry_count": appStatus.PUKRetryCount,
-				"key_initialized": appStatus.KeyInitialized,
-				"key_path":        keyStatus.Path,
-			})
+			return internal.PrintJSON(result)
 		}
 
-		fmt.Printf("PIN retry count: %d\n", appStatus.PinRetryCount)
-		fmt.Printf("PUK retry count: %d\n", appStatus.PUKRetryCount)
-		fmt.Printf("Key initialized: %v\n", appStatus.KeyInitialized)
-		fmt.Printf("Key path: %s\n", keyStatus.Path)
+		fmt.Printf("PIN retry count: %d\n", result.PinRetryCount)
+		fmt.Printf("PUK retry count: %d\n", result.PUKRetryCount)
+		fmt.Printf("Key initialized: %v\n", result.KeyInitialized)
+		fmt.Printf("Key path: %s\n", result.KeyPath)
 		return nil
 	})
-}
-
-func parseDataType(s string) int {
-	switch strings.ToLower(s) {
-	case "public":
-		return int(keycard.P1StoreDataPublic)
-	case "ndef":
-		return int(keycard.P1StoreDataNDEF)
-	case "cash":
-		return int(keycard.P1StoreDataCash)
-	default:
-		return -1
-	}
 }

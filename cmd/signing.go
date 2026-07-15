@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -101,7 +100,7 @@ func cmdSign(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
-	return doSign(cmd, data, cmd.String("path"), cmd.String("algo"), false)
+	return doSignCLI(cmd, data, cmd.String("path"), cmd.String("algo"), false)
 }
 
 func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
@@ -109,8 +108,8 @@ func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
 	if args.Len() == 0 {
 		return fmt.Errorf("message argument required")
 	}
-	hash := signHashEthereumMessage(args.First())
-	return doSign(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
+	hash := hashEthereumMessage(args.First())
+	return doSignCLI(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
 }
 
 func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
@@ -119,7 +118,7 @@ func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("error reading file: %w", err)
 	}
 	hash := crypto.Keccak256(content)
-	return doSign(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
+	return doSignCLI(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
 }
 
 func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
@@ -127,7 +126,7 @@ func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
-	return doSign(cmd, data, "", "ecdsa", true)
+	return doSignCLI(cmd, data, "", "ecdsa", true)
 }
 
 func cmdSignMessagePinless(ctx context.Context, cmd *cli.Command) error {
@@ -135,59 +134,61 @@ func cmdSignMessagePinless(ctx context.Context, cmd *cli.Command) error {
 	if args.Len() == 0 {
 		return fmt.Errorf("message argument required")
 	}
-	hash := signHashEthereumMessage(args.First())
-	return doSign(cmd, hash, "", "ecdsa", true)
+	hash := hashEthereumMessage(args.First())
+	return doSignCLI(cmd, hash, "", "ecdsa", true)
 }
 
-// doSign performs the signing operation. For pinless signing it uses AuthNone
-// (no PIN required). For normal signing it uses AuthPIN.
-func doSign(cmd *cli.Command, data []byte, path, algo string, pinless bool) error {
+func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) error {
+	authLevel := AuthPIN
 	if pinless {
-		return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-			return doSignCore(kc, data, path, algo, pinless, cmd)
-		})
+		authLevel = AuthNone
 	}
-	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		return doSignCore(kc, data, path, algo, pinless, cmd)
+	return runCard(cmd, authLevel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		sig, err := signWithParams(kc, data, path, algo, pinless)
+		if err != nil {
+			return err
+		}
+		return outputSignature(cmd, sig)
 	})
 }
 
-// doSignCore is the core signing logic, usable from shell.go as-is.
-func doSignCore(kc *keycard.CommandSet, data []byte, path, algo string, pinless bool, cmd *cli.Command) error {
-	// Check applet version for pinless
-	if pinless && internal.IsAppletV4Plus(kc) {
-		return fmt.Errorf("pinless signing is not available on applet version 4.0+")
-	}
-
-	var sig *types.Signature
-	var err error
-
+// signWithParams performs signing with the given parameters using core functions.
+func signWithParams(kc *keycard.CommandSet, data []byte, path, algo string, pinless bool) (*types.Signature, error) {
 	if pinless {
-		sig, err = kc.SignPinless(data)
-	} else if path != "" {
+		return doKeycardSignPinless(kc, data)
+	}
+	if path != "" {
 		switch strings.ToLower(algo) {
 		case "schnorr":
-			sig, err = kc.SignWithPathAndAlgo(data, path, keycard.P2SignBIP340Schnorr)
-		default: // ecdsa
-			sig, err = kc.SignWithPath(data, path)
+			return doKeycardSignWithPathAndAlgo(kc, data, path, keycard.P2SignBIP340Schnorr)
+		default:
+			return doKeycardSignWithPath(kc, data, path)
 		}
-	} else {
-		sig, err = kc.Sign(data)
 	}
-	if err != nil {
-		return err
-	}
-
-	return outputSignature(cmd, sig)
+	return doKeycardSign(kc, data)
 }
 
-func signHashEthereumMessage(message string) []byte {
-	data := []byte(message)
-	if strings.HasPrefix(message, "0x") {
-		if value, err := hex.DecodeString(message[2:]); err == nil {
-			data = value
-		}
+func outputSignature(cmd interface{ Bool(string) bool }, sig *types.Signature) error {
+	result := newSignatureResult(sig)
+	if cmd.Bool("json") {
+		return internal.PrintJSON(map[string]interface{}{
+			"signature": map[string]interface{}{
+				"r":             result.R,
+				"s":             result.S,
+				"v":             result.V,
+				"eth_signature": result.ETHSignature,
+				"public_key":    result.PublicKey,
+				"address":       result.Address,
+			},
+		})
 	}
-	wrappedMessage := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
-	return crypto.Keccak256([]byte(wrappedMessage))
+	fmt.Printf("Signature R: %s\n", result.R)
+	fmt.Printf("Signature S: %s\n", result.S)
+	fmt.Printf("Signature V: %d\n", result.V)
+	fmt.Printf("ETH Signature: %s\n", result.ETHSignature)
+	fmt.Printf("Public key: %s\n", result.PublicKey)
+	if result.Address != "" {
+		fmt.Printf("Address: %s\n", result.Address)
+	}
+	return nil
 }

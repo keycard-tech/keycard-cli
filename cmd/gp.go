@@ -109,38 +109,25 @@ func GPCommands() []*cli.Command {
 }
 
 func cmdGPSendAPDU(ctx context.Context, cmd *cli.Command) error {
-	hexData := cmd.String("hex")
-	rawCmd, err := internal.ParseHex(hexData)
+	rawCmd, err := internal.ParseHex(cmd.String("hex"))
 	if err != nil {
 		return fmt.Errorf("invalid hex APDU: %w", err)
 	}
 
-	apduCmd, err := apdu.ParseCommand(rawCmd)
-	if err != nil {
-		return err
-	}
-
 	return runGP(cmd, func(gp *globalplatform.CommandSet, _ *cli.Command) error {
-		var channel interface {
-			Send(*apdu.Command) (*apdu.Response, error)
-		}
-		if sc := gp.SecureChannel(); sc != nil {
-			channel = sc
-		} else {
-			channel = gp.Channel()
-		}
-		resp, err := channel.Send(apduCmd)
+		resp, err := doGPSendAPDU(gp, rawCmd)
 		if err != nil {
 			return err
 		}
-
+		if resp.Sw != apdu.SwOK {
+			return apdu.NewErrBadResponse(resp.Sw, "unexpected response")
+		}
 		if cmd.Bool("json") {
 			return internal.PrintJSON(map[string]interface{}{
 				"sw":   fmt.Sprintf("0x%04x", resp.Sw),
 				"data": "0x" + hex.EncodeToString(resp.Data),
 			})
 		}
-
 		fmt.Printf("SW: 0x%04x\n", resp.Sw)
 		if len(resp.Data) > 0 {
 			fmt.Printf("Response: 0x%x\n", resp.Data)
@@ -150,22 +137,22 @@ func cmdGPSendAPDU(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGPSelect(ctx context.Context, cmd *cli.Command) error {
-	aidHex := cmd.String("aid")
+	var aid []byte
+	if aidHex := cmd.String("aid"); aidHex != "" {
+		var err error
+		aid, err = internal.ParseHex(aidHex)
+		if err != nil {
+			return fmt.Errorf("invalid AID hex: %w", err)
+		}
+	}
 
 	return runGP(cmd, func(gp *globalplatform.CommandSet, _ *cli.Command) error {
-		if aidHex != "" {
-			aid, err := internal.ParseHex(aidHex)
-			if err != nil {
-				return fmt.Errorf("invalid AID hex: %w", err)
-			}
-			if err := gp.SelectAID(aid); err != nil {
-				return err
-			}
-			fmt.Printf("Selected AID: %s\n", aidHex)
+		if err := doGPSelect(gp, aid); err != nil {
+			return err
+		}
+		if aid != nil {
+			fmt.Printf("Selected AID: %s\n", cmd.String("aid"))
 		} else {
-			if err := gp.Select(); err != nil {
-				return err
-			}
 			fmt.Println("Selected ISD")
 		}
 		return nil
@@ -173,7 +160,6 @@ func cmdGPSelect(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGPOpenSecureChannel(ctx context.Context, cmd *cli.Command) error {
-	// GP secure channel is already opened by runGP.
 	return runGP(cmd, func(gp *globalplatform.CommandSet, _ *cli.Command) error {
 		fmt.Println("GP secure channel opened")
 		return nil
@@ -181,8 +167,7 @@ func cmdGPOpenSecureChannel(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGPDelete(ctx context.Context, cmd *cli.Command) error {
-	aidHex := cmd.String("aid")
-	aid, err := internal.ParseHex(aidHex)
+	aid, err := internal.ParseHex(cmd.String("aid"))
 	if err != nil {
 		return fmt.Errorf("invalid AID hex: %w", err)
 	}
@@ -191,7 +176,7 @@ func cmdGPDelete(ctx context.Context, cmd *cli.Command) error {
 		if err := gp.DeleteObject(aid); err != nil {
 			return err
 		}
-		fmt.Printf("Deleted AID: %s\n", aidHex)
+		fmt.Printf("Deleted AID: %s\n", cmd.String("aid"))
 		return nil
 	})
 }
@@ -204,8 +189,7 @@ func cmdGPLoad(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer f.Close()
 
-	pkgAIDHex := cmd.String("pkg-aid")
-	pkgAID, err := internal.ParseHex(pkgAIDHex)
+	pkgAID, err := internal.ParseHex(cmd.String("pkg-aid"))
 	if err != nil {
 		return fmt.Errorf("invalid package AID hex: %w", err)
 	}
@@ -217,7 +201,7 @@ func cmdGPLoad(ctx context.Context, cmd *cli.Command) error {
 		if err := gp.LoadPackage(f, pkgAID, callback); err != nil {
 			return err
 		}
-		fmt.Printf("Package loaded: %s\n", pkgAIDHex)
+		fmt.Printf("Package loaded: %s\n", cmd.String("pkg-aid"))
 		return nil
 	})
 }
@@ -255,17 +239,15 @@ func cmdGPInstallForInstall(ctx context.Context, cmd *cli.Command) error {
 
 func cmdGPGetStatus(ctx context.Context, cmd *cli.Command) error {
 	return runGP(cmd, func(gp *globalplatform.CommandSet, _ *cli.Command) error {
-		status, err := gp.GetStatus()
+		status, err := doGPGetStatus(gp)
 		if err != nil {
 			return err
 		}
-
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]interface{}{
+			return internal.PrintJSON(map[string]string{
 				"lifecycle": status.LifeCycle(),
 			})
 		}
-
 		fmt.Printf("Card status: %s\n", status.LifeCycle())
 		return nil
 	})

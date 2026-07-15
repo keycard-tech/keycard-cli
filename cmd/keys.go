@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	keycard "github.com/status-im/keycard-go"
 	"github.com/status-im/keycard-go/types"
 	"github.com/urfave/cli/v3"
@@ -145,15 +143,7 @@ func KeyCommands() []*cli.Command {
 
 func cmdGenerateKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		appStatus, err := kc.GetStatusApplication()
-		if err != nil {
-			return err
-		}
-		if appStatus.KeyInitialized {
-			return fmt.Errorf("key already generated. Remove it first with 'remove-key'")
-		}
-
-		keyUID, err := kc.GenerateKey()
+		keyUID, err := doKeycardGenerateKey(kc)
 		if err != nil {
 			return err
 		}
@@ -249,31 +239,34 @@ func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPublicOnly)
+		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPublicOnly)
 		if err != nil {
 			return err
 		}
-		return outputExportedKey(exported, cmd, false)
+		result := doKeycardExportKeyResult(exported, false, cmd.String("path"))
+		return outputExportedKeyJSONOrPlain(cmd, result)
 	})
 }
 
 func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
+		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
 		if err != nil {
 			return err
 		}
-		return outputExportedKey(exported, cmd, true)
+		result := doKeycardExportKeyResult(exported, true, cmd.String("path"))
+		return outputExportedKeyJSONOrPlain(cmd, result)
 	})
 }
 
 func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		exported, err := doExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyExtendedPublic)
+		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyExtendedPublic)
 		if err != nil {
 			return err
 		}
-		return outputExportedKeyExtended(exported, cmd)
+		result := doKeycardExportExtendedKeyResult(exported, cmd.String("path"))
+		return outputExportedExtendedKeyJSONOrPlain(cmd, result)
 	})
 }
 
@@ -317,91 +310,28 @@ func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 	})
 }
 
-// doExportKey handles the common export key logic with path/current resolution.
-func doExportKey(kc *keycard.CommandSet, path string, current bool, p2 uint8) (*types.ExportedKey, error) {
-	derive := path != ""
-	makeCurrent := false
-	if !derive && !current {
-		derive = false
-	}
-	return kc.ExportKeyWithP2(derive, makeCurrent, p2, path)
-}
-
-func outputExportedKey(exported *types.ExportedKey, cmd *cli.Command, showPrivate bool) error {
-	pubKey := exported.PubKey()
-	ethAddr := ""
-	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
-		ethAddr = crypto.PubkeyToAddress(*pubkey).Hex()
-	}
-
+func outputExportedKeyJSONOrPlain(cmd interface{ Bool(string) bool }, result ExportedKeyResult) error {
 	if cmd.Bool("json") {
-		out := map[string]string{
-			"public_key": "0x" + hex.EncodeToString(pubKey),
-			"address":    ethAddr,
-		}
-		if showPrivate {
-			out["private_key"] = "0x" + hex.EncodeToString(exported.PrivKey())
-		}
-		return internal.PrintJSON(out)
+		return internal.PrintJSON(result)
 	}
-
-	if showPrivate {
-		fmt.Printf("Private key: 0x%x\n", exported.PrivKey())
+	if result.PrivateKey != "" {
+		fmt.Printf("Private key: %s\n", result.PrivateKey)
 	}
-	fmt.Printf("Public key: 0x%x\n", pubKey)
-	if ethAddr != "" {
-		fmt.Printf("Address: %s\n", ethAddr)
+	fmt.Printf("Public key: %s\n", result.PublicKey)
+	if result.Address != "" {
+		fmt.Printf("Address: %s\n", result.Address)
 	}
 	return nil
 }
 
-func outputExportedKeyExtended(exported *types.ExportedKey, cmd *cli.Command) error {
-	pubKey := exported.PubKey()
-	chainCode := exported.ChainCode()
-	ethAddr := ""
-	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
-		ethAddr = crypto.PubkeyToAddress(*pubkey).Hex()
-	}
-
+func outputExportedExtendedKeyJSONOrPlain(cmd interface{ Bool(string) bool }, result ExportedKeyResult) error {
 	if cmd.Bool("json") {
-		return internal.PrintJSON(map[string]string{
-			"public_key": "0x" + hex.EncodeToString(pubKey),
-			"chain_code": "0x" + hex.EncodeToString(chainCode),
-			"address":    ethAddr,
-		})
+		return internal.PrintJSON(result)
 	}
-
-	fmt.Printf("Public key: 0x%x\n", pubKey)
-	fmt.Printf("Chain code: 0x%x\n", chainCode)
-	if ethAddr != "" {
-		fmt.Printf("Address: %s\n", ethAddr)
+	fmt.Printf("Public key: %s\n", result.PublicKey)
+	fmt.Printf("Chain code: %s\n", result.ChainCode)
+	if result.Address != "" {
+		fmt.Printf("Address: %s\n", result.Address)
 	}
 	return nil
-}
-
-// validateMnemonic checks that the mnemonic has a valid word count
-// and that each word exists in the BIP39 English wordlist.
-func validateMnemonic(phrase string) bool {
-	words := strings.Fields(phrase)
-	// Valid mnemonic lengths: 12, 15, 18, 21, 24 words
-	n := len(words)
-	if n%3 != 0 || n < 12 || n > 24 {
-		return false
-	}
-	for _, word := range words {
-		if !containsWord(word) {
-			return false
-		}
-	}
-	return true
-}
-
-// containsWord checks if a word exists in the BIP39 English wordlist.
-func containsWord(word string) bool {
-	for i := 0; i < len(types.BIP39EnglishWordlist); i++ {
-		if types.BIP39EnglishWordlist[i] == word {
-			return true
-		}
-	}
-	return false
 }

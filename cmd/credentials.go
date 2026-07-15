@@ -111,20 +111,7 @@ func cmdUnblockPIN(ctx context.Context, cmd *cli.Command) error {
 	}
 	newPIN := cmd.String("new-pin")
 
-	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		// UnblockPIN needs secure channel open but not PIN verified.
-		secrets := internal.ResolveSecrets("", "", cmd.String("pairing-password"))
-
-		if !internal.IsSecureChannelV2(kc) && secrets.PairingPass != "" {
-			if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
-				return err
-			}
-		}
-		if err := kc.AutoOpenSecureChannel(); err != nil {
-			return err
-		}
-		defer internal.AutoUnpair(kc)
-
+	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if err := kc.UnblockPIN(puk, newPIN); err != nil {
 			return err
 		}

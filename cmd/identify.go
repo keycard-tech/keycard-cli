@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -35,26 +34,24 @@ func cmdIdentify(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("identify is not supported on Secure Channel V2 cards")
 		}
 
-		pubkey, err := kc.Identify()
+		var expectedKey []byte
+		if expectedKeyHex != "" {
+			var err error
+			expectedKey, err = internal.ParseHex(expectedKeyHex)
+			if err != nil {
+				return fmt.Errorf("invalid public key hex: %w", err)
+			}
+		}
+
+		pubkey, err := doKeycardIdentify(kc, expectedKey)
 		if err != nil {
 			return err
 		}
 
-		// Optionally verify against expected public key
-		if expectedKeyHex != "" {
-			expectedKey, err := internal.ParseHex(expectedKeyHex)
-			if err != nil {
-				return fmt.Errorf("invalid public key hex: %w", err)
-			}
-			if !bytes.Equal(expectedKey, pubkey) {
-				return fmt.Errorf("genuinity check failed: expected 0x%x, got 0x%x", expectedKey, pubkey)
-			}
-		}
-
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]interface{}{
-				"identified": true,
-				"public_key": "0x" + hex.EncodeToString(pubkey),
+			return internal.PrintJSON(IdentifyResult{
+				Identified: true,
+				PublicKey:  "0x" + hex.EncodeToString(pubkey),
 			})
 		}
 

@@ -60,22 +60,16 @@ func cmdPair(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		secrets := internal.ResolveSecrets("", "", cmd.String("pairing-password"))
-
-		if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
+		pairing, err := doKeycardPair(kc, secrets.PairingPass)
+		if err != nil {
 			return err
 		}
 
-		pairing := kc.Pairing()
-		if pairing == nil {
-			return fmt.Errorf("pairing succeeded but pairing info is nil")
-		}
-
 		key := pairing.Key()
-
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]interface{}{
-				"pairing_key":   fmt.Sprintf("0x%x", key[:]),
-				"pairing_index": pairing.Index(),
+			return internal.PrintJSON(PairingResult{
+				PairingKey:   fmt.Sprintf("0x%x", key[:]),
+				PairingIndex: int(pairing.Index()),
 			})
 		}
 
@@ -118,18 +112,16 @@ func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
 
 func cmdSecureChannelVersion(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		ver, ok := kc.SecureChannelVersion()
-		if !ok {
-			return fmt.Errorf("could not determine secure channel version")
+		version, err := doKeycardSecureChannelVersion(kc)
+		if err != nil {
+			return err
 		}
 
 		if cmd.Bool("json") {
-			return internal.PrintJSON(map[string]string{
-				"secure_channel_version": fmt.Sprintf("v%d", ver+1),
-			})
+			return internal.PrintJSON(SecureChannelVersionResult{Version: version})
 		}
 
-		fmt.Printf("Secure channel version: V%d\n", ver+1)
+		fmt.Printf("Secure channel version: %s\n", version)
 		return nil
 	})
 }
