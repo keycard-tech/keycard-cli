@@ -63,7 +63,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-generate-key", usage: "Generate a new key on the card", handler: shellKeycardGenerateKey},
 		{name: "keycard-remove-key", usage: "Remove the current key", handler: shellKeycardRemoveKey},
 		{name: "keycard-derive-key", usage: "Derive a key at the given path", handler: shellKeycardDeriveKey},
-		{name: "keycard-load-seed", usage: "Load a BIP39 seed onto the card", handler: shellKeycardLoadSeed},
+		{name: "keycard-load-seed", usage: "Load a seed onto the card (mnemonic phrase or hex)", handler: shellKeycardLoadSeed},
 		{name: "keycard-load-lee-key", usage: "Load a LEE key onto the card", handler: shellKeycardLoadLEEKey},
 		{name: "keycard-export-key-public", usage: "Export the public key", handler: shellKeycardExportKeyPublic},
 		{name: "keycard-export-key-private", usage: "Export the private key", handler: shellKeycardExportKeyPrivate},
@@ -532,10 +532,22 @@ func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
-	seed, err := parseHexShell(args[0])
-	if err != nil {
-		return nil, err
+
+	var seed []byte
+	input := args[0]
+
+	// Try mnemonic first; if it validates, derive the seed from the phrase.
+	// Otherwise fall back to hex parsing.
+	if err := types.ValidateMnemonic(input); err == nil {
+		seed = types.BinarySeedFromPhrase(input, "")
+	} else {
+		var err error
+		seed, err = parseHexShell(input)
+		if err != nil {
+			return nil, fmt.Errorf("not a valid mnemonic and not valid hex: %w", err)
+		}
 	}
+
 	keyID, err := ctx.kc.LoadSeed(seed)
 	if err != nil {
 		return nil, err

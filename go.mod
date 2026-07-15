@@ -6,7 +6,7 @@ require (
 	github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/hsanjuan/go-ndef v0.0.1
-	github.com/status-im/keycard-go v0.3.4-0.20260714101404-084df7141f15
+	github.com/status-im/keycard-go v0.3.4-0.20260715105910-78b0e6904376
 	github.com/urfave/cli/v3 v3.4.1
 )
 

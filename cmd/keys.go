@@ -185,8 +185,8 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 
 	var seed []byte
 	if mnemonic != "" {
-		if !validateMnemonic(mnemonic) {
-			return fmt.Errorf("invalid BIP39 mnemonic")
+		if err := types.ValidateMnemonic(mnemonic); err != nil {
+			return fmt.Errorf("invalid BIP39 mnemonic: %w", err)
 		}
 		seed = types.BinarySeedFromPhrase(mnemonic, "")
 	} else {

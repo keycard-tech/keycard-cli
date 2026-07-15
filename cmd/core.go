@@ -892,35 +892,6 @@ func doCashSign(cashKC *keycard.CashCommandSet, data []byte) (*types.Signature, 
 }
 
 // ---------------------------------------------------------------------------
-// BIP39 mnemonic validation (shared between CLI and shell)
-// ---------------------------------------------------------------------------
-
-// validateMnemonic checks that the mnemonic has a valid word count
-// and that each word exists in the BIP39 English wordlist.
-func validateMnemonic(phrase string) bool {
-	words := strings.Fields(phrase)
-	n := len(words)
-	if n%3 != 0 || n < 12 || n > 24 {
-		return false
-	}
-	for _, word := range words {
-		if !containsBIP39Word(word) {
-			return false
-		}
-	}
-	return true
-}
-
-func containsBIP39Word(word string) bool {
-	for i := 0; i < len(types.BIP39EnglishWordlist); i++ {
-		if types.BIP39EnglishWordlist[i] == word {
-			return true
-		}
-	}
-	return false
-}
-
-// ---------------------------------------------------------------------------
 // Shell context
 // ---------------------------------------------------------------------------
 
