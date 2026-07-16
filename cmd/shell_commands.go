@@ -119,7 +119,7 @@ func shellCashSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
 		Installed: info.Installed,
 		PublicKey: "0x" + hex.EncodeToString(info.PublicKey),
 		Version:   "0x" + hex.EncodeToString(info.Version),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ func shellGPSendAPDU(ctx *shellCtx, args []string) (*shellOutput, error) {
 		Data:    resp.Data,
 		SWStr:   fmt.Sprintf("0x%04x", resp.Sw),
 		DataHex: "0x" + hex.EncodeToString(resp.Data),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellGPSelect(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -167,16 +167,16 @@ func shellGPSelect(ctx *shellCtx, args []string) (*shellOutput, error) {
 		return nil, err
 	}
 	if aid != nil {
-		return newShellOutput(ActionResult{Message: "Selected AID: " + aidStr}), nil
+		return newShellOutput(ActionResult{Message: "Selected AID: " + aidStr}, ctx.showSecrets), nil
 	}
-	return newShellOutput(ActionResult{Message: "Selected ISD"}), nil
+	return newShellOutput(ActionResult{Message: "Selected ISD"}, ctx.showSecrets), nil
 }
 
 func shellGPOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.gp.OpenSecureChannel(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "GP secure channel opened"}), nil
+	return newShellOutput(ActionResult{Message: "GP secure channel opened"}, ctx.showSecrets), nil
 }
 
 func shellGPDelete(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -190,7 +190,7 @@ func shellGPDelete(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.gp.DeleteObject(aid); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Deleted AID: " + args[0]}), nil
+	return newShellOutput(ActionResult{Message: "Deleted AID: " + args[0]}, ctx.showSecrets), nil
 }
 
 func shellGPLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -209,7 +209,7 @@ func shellGPLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.gp.LoadPackage(f, pkgAID, func(int, int) {}); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Package loaded: " + args[1]}), nil
+	return newShellOutput(ActionResult{Message: "Package loaded: " + args[1]}, ctx.showSecrets), nil
 }
 
 func shellGPInstallForInstall(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -238,7 +238,7 @@ func shellGPInstallForInstall(ctx *shellCtx, args []string) (*shellOutput, error
 	if err := ctx.gp.InstallForInstall(pkgAID, appletAID, instanceAID, params); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Install for install complete"}), nil
+	return newShellOutput(ActionResult{Message: "Install for install complete"}, ctx.showSecrets), nil
 }
 
 func shellGPGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -246,7 +246,7 @@ func shellGPGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(GPStatusResult{Lifecycle: status.LifeCycle()}), nil
+	return newShellOutput(GPStatusResult{Lifecycle: status.LifeCycle()}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ func shellKeycardSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
 		Initialized: info.Initialized,
 		KeyUID:      "0x" + hex.EncodeToString(info.KeyUID),
 		AppVersion:  fmt.Sprintf("0x%04x", info.AppVersion()),
-	}), err
+	}, ctx.showSecrets), err
 }
 
 func shellKeycardInfo(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -289,7 +289,7 @@ func shellKeycardInfo(ctx *shellCtx, _ []string) (*shellOutput, error) {
 		return nil, err
 	}
 
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardInit(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -325,7 +325,7 @@ func shellKeycardInit(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if !v2 {
 		result.PairingPassword = ctx.secrets.PairingPass()
 	}
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -339,7 +339,7 @@ func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.kc.FactoryReset(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Card factory reset complete"}), nil
+	return newShellOutput(ActionResult{Message: "Card factory reset complete"}, ctx.showSecrets), nil
 }
 
 func shellKeycardGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -347,7 +347,7 @@ func shellKeycardGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ func shellKeycardSetSecrets(ctx *shellCtx, args []string) (*shellOutput, error) 
 		Pin:             args[0],
 		Puk:             args[1],
 		PairingPassword: pairingPass,
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -388,7 +388,7 @@ func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) 
 	return newShellOutput(SetPairingResult{
 		PairingKey:   args[0],
 		PairingIndex: int(index),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -397,7 +397,7 @@ func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) 
 
 func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "pairing is not needed for Secure Channel V2"}), nil
+		return newShellOutput(ActionResult{Message: "pairing is not needed for Secure Channel V2"}, ctx.showSecrets), nil
 	}
 	if ctx.secrets == nil {
 		return nil, errors.New("cannot pair without setting secrets")
@@ -410,12 +410,12 @@ func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	return newShellOutput(PairingResult{
 		PairingKey:   fmt.Sprintf("0x%x", key[:]),
 		PairingIndex: int(pairing.Index()),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "unpair is not needed for Secure Channel V2"}), nil
+		return newShellOutput(ActionResult{Message: "unpair is not needed for Secure Channel V2"}, ctx.showSecrets), nil
 	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
@@ -430,17 +430,17 @@ func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.Unpair(uint8(indexInt)); err != nil {
 		return nil, err
 	}
-	return newShellOutput(UnpairResult{Index: int(indexInt)}), nil
+	return newShellOutput(UnpairResult{Index: int(indexInt)}, ctx.showSecrets), nil
 }
 
 func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "unpair-others is not needed for Secure Channel V2 cards"}), nil
+		return newShellOutput(ActionResult{Message: "unpair-others is not needed for Secure Channel V2 cards"}, ctx.showSecrets), nil
 	}
 	if err := ctx.kc.UnpairOthers(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "All other pairings removed"}), nil
+	return newShellOutput(ActionResult{Message: "All other pairings removed"}, ctx.showSecrets), nil
 }
 
 func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -450,7 +450,7 @@ func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, err
 	if err := ctx.kc.AutoOpenSecureChannel(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Secure channel opened"}), nil
+	return newShellOutput(ActionResult{Message: "Secure channel opened"}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +464,7 @@ func shellKeycardVerifyPIN(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.VerifyPIN(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "PIN verified successfully"}), nil
+	return newShellOutput(ActionResult{Message: "PIN verified successfully"}, ctx.showSecrets), nil
 }
 
 func shellKeycardChangePIN(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -474,7 +474,7 @@ func shellKeycardChangePIN(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.ChangePIN(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "PIN changed successfully"}), nil
+	return newShellOutput(ActionResult{Message: "PIN changed successfully"}, ctx.showSecrets), nil
 }
 
 func shellKeycardChangePUK(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -484,7 +484,7 @@ func shellKeycardChangePUK(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.ChangePUK(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "PUK changed successfully"}), nil
+	return newShellOutput(ActionResult{Message: "PUK changed successfully"}, ctx.showSecrets), nil
 }
 
 func shellKeycardUnblockPin(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -494,7 +494,7 @@ func shellKeycardUnblockPin(ctx *shellCtx, args []string) (*shellOutput, error) 
 	if err := ctx.kc.UnblockPIN(args[0], args[1]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "PIN unblocked successfully"}), nil
+	return newShellOutput(ActionResult{Message: "PIN unblocked successfully"}, ctx.showSecrets), nil
 }
 
 func shellKeycardChangePairingSecret(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -507,7 +507,7 @@ func shellKeycardChangePairingSecret(ctx *shellCtx, args []string) (*shellOutput
 	if err := ctx.kc.ChangePairingSecret(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Pairing password changed successfully"}), nil
+	return newShellOutput(ActionResult{Message: "Pairing password changed successfully"}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -521,14 +521,14 @@ func shellKeycardGenerateKey(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	}
 	return newShellOutput(KeyGenerateResult{
 		KeyUID: "0x" + hex.EncodeToString(keyUID),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardRemoveKey(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.kc.RemoveKey(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Key removed"}), nil
+	return newShellOutput(ActionResult{Message: "Key removed"}, ctx.showSecrets), nil
 }
 
 func shellKeycardDeriveKey(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -541,7 +541,7 @@ func shellKeycardDeriveKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.DeriveKey(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Key derived at path: " + args[0]}), nil
+	return newShellOutput(ActionResult{Message: "Key derived at path: " + args[0]}, ctx.showSecrets), nil
 }
 
 func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -570,7 +570,7 @@ func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 	}
 	return newShellOutput(KeyLoadResult{
 		KeyID: "0x" + hex.EncodeToString(keyID),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -587,7 +587,7 @@ func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) 
 	if err := ctx.kc.LoadLEEKey(key); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "LEE key loaded"}), nil
+	return newShellOutput(ActionResult{Message: "LEE key loaded"}, ctx.showSecrets), nil
 }
 
 func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -599,7 +599,7 @@ func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (*shellOutput, er
 		return nil, err
 	}
 	result := doKeycardExportKeyResult(exported, false, args[0])
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardExportKeyPrivate(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -611,7 +611,7 @@ func shellKeycardExportKeyPrivate(ctx *shellCtx, args []string) (*shellOutput, e
 		return nil, err
 	}
 	result := doKeycardExportKeyResult(exported, true, args[0])
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -623,7 +623,7 @@ func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (*shellOutput, 
 		return nil, err
 	}
 	result := doKeycardExportExtendedKeyResult(exported, args[0])
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -640,7 +640,7 @@ func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (*shellOutput, error
 	return newShellOutput(LEEKeyResult{
 		Key:  "0x" + hex.EncodeToString(key),
 		Path: args[0],
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -665,7 +665,7 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 	return newShellOutput(BIP85KeyResult{
 		Key:  "0x" + hex.EncodeToString(key),
 		Path: args[0],
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -693,7 +693,7 @@ func shellKeycardSign(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if len(args) == 2 {
 		result.Path = args[1]
 	}
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardSignMessage(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -721,7 +721,7 @@ func shellKeycardSignMessage(ctx *shellCtx, args []string) (*shellOutput, error)
 	if path != "" {
 		result.Path = path
 	}
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardSignFile(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -739,7 +739,7 @@ func shellKeycardSignFile(ctx *shellCtx, args []string) (*shellOutput, error) {
 	}
 	result := newSignatureResult(sig)
 	result.File = args[0]
-	return newShellOutput(result), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardSignPinless(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -754,7 +754,7 @@ func shellKeycardSignPinless(ctx *shellCtx, args []string) (*shellOutput, error)
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(newSignatureResult(sig)), nil
+	return newShellOutput(newSignatureResult(sig), ctx.showSecrets), nil
 }
 
 func shellKeycardSignMessagePinless(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -766,7 +766,7 @@ func shellKeycardSignMessagePinless(ctx *shellCtx, args []string) (*shellOutput,
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(newSignatureResult(sig)), nil
+	return newShellOutput(newSignatureResult(sig), ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -783,7 +783,7 @@ func shellKeycardSetPinlessPath(ctx *shellCtx, args []string) (*shellOutput, err
 	if err := ctx.kc.SetPinlessPath(args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Pinless path set: " + args[0]}), nil
+	return newShellOutput(ActionResult{Message: "Pinless path set: " + args[0]}, ctx.showSecrets), nil
 }
 
 func shellKeycardResetPinlessPath(ctx *shellCtx, _ []string) (*shellOutput, error) {
@@ -793,7 +793,7 @@ func shellKeycardResetPinlessPath(ctx *shellCtx, _ []string) (*shellOutput, erro
 	if err := ctx.kc.ResetPinlessPath(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Pinless path reset"}), nil
+	return newShellOutput(ActionResult{Message: "Pinless path reset"}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -812,7 +812,7 @@ func shellKeycardGenerateMnemonic(ctx *shellCtx, args []string) (*shellOutput, e
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(MnemonicResult{Indexes: indexes}), nil
+	return newShellOutput(MnemonicResult{Indexes: indexes}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -834,7 +834,7 @@ func shellKeycardGetData(ctx *shellCtx, args []string) (*shellOutput, error) {
 	return newShellOutput(DataResult{
 		Type: args[0],
 		Data: "0x" + hex.EncodeToString(data),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardStoreData(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -855,7 +855,7 @@ func shellKeycardStoreData(ctx *shellCtx, args []string) (*shellOutput, error) {
 	return newShellOutput(StoreDataResult{
 		Type:  args[0],
 		Bytes: len(data),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -875,7 +875,7 @@ func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error
 	}
 	return newShellOutput(ChallengeResult{
 		Challenge: "0x" + hex.EncodeToString(challenge),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 func shellKeycardSetNDEF(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -889,7 +889,7 @@ func shellKeycardSetNDEF(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := ctx.kc.SetNDEF(ndefData); err != nil {
 		return nil, err
 	}
-	return newShellOutput(SetNDEFResult{Bytes: len(ndefData)}), nil
+	return newShellOutput(SetNDEFResult{Bytes: len(ndefData)}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -901,7 +901,7 @@ func shellKeycardGetName(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(NameResult{Name: name}), nil
+	return newShellOutput(NameResult{Name: name}, ctx.showSecrets), nil
 }
 
 func shellKeycardSetName(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -911,7 +911,7 @@ func shellKeycardSetName(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := doKeycardSetName(ctx.kc, args[0]); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Card name set: " + args[0]}), nil
+	return newShellOutput(ActionResult{Message: "Card name set: " + args[0]}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -937,7 +937,7 @@ func shellKeycardIdentify(ctx *shellCtx, args []string) (*shellOutput, error) {
 	return newShellOutput(IdentifyResult{
 		Identified: true,
 		PublicKey:  "0x" + hex.EncodeToString(pubkey),
-	}), nil
+	}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -956,7 +956,7 @@ func shellCashSign(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(newSignatureResult(sig)), nil
+	return newShellOutput(newSignatureResult(sig), ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -967,7 +967,7 @@ func shellIdentSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.identKC.Select(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "Ident applet selected"}), nil
+	return newShellOutput(ActionResult{Message: "Ident applet selected"}, ctx.showSecrets), nil
 }
 
 func shellIdentLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
@@ -994,7 +994,7 @@ func shellIdentLoad(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if _, err := ctx.identKC.StoreData(data); err != nil {
 		return nil, err
 	}
-	return newShellOutput(LoadIdentResult{Bytes: len(data)}), nil
+	return newShellOutput(LoadIdentResult{Bytes: len(data)}, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------

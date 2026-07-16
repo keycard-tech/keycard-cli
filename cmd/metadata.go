@@ -31,7 +31,7 @@ func MetadataCommands() []*cli.Command {
 }
 
 func cmdGetName(ctx context.Context, cmd *cli.Command) error {
-	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		name, err := doKeycardGetName(kc)
 		if err != nil {
 			return err

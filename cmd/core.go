@@ -48,12 +48,12 @@ const (
 
 // Result is implemented by all command result types.
 type Result interface {
-	Format() string
+	Format(showSecrets bool) string
 }
 
 // PrintResult writes r to stdout as JSON (if mode == OutputJSON) or
-// as formatted text (r.Format()).
-func PrintResult(mode OutputMode, r Result) error {
+// as formatted text (r.Format(showSecrets)).
+func PrintResult(mode OutputMode, r Result, showSecrets bool) error {
 	if mode == OutputJSON {
 		data, err := json.MarshalIndent(r, "", "  ")
 		if err != nil {
@@ -62,18 +62,18 @@ func PrintResult(mode OutputMode, r Result) error {
 		fmt.Fprintln(os.Stdout, string(data))
 		return nil
 	}
-	fmt.Print(r.Format())
+	fmt.Print(r.Format(showSecrets))
 	return nil
 }
 
 // PrintResultCLI is a convenience wrapper for standalone CLI commands.
-// It reads the --json flag from cmd and dispatches to PrintResult.
+// It reads the --json and --show-secrets flags from cmd and dispatches to PrintResult.
 func PrintResultCLI(cmd interface{ Bool(string) bool }, r Result) error {
 	mode := OutputText
 	if cmd.Bool("json") {
 		mode = OutputJSON
 	}
-	return PrintResult(mode, r)
+	return PrintResult(mode, r, cmd.Bool("show-secrets"))
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ type GPResult struct {
 	DataHex string `json:"data"`
 }
 
-func (r GPResult) Format() string {
+func (r GPResult) Format(_ bool) string {
 	return fmt.Sprintf("SW: 0x%04x\nResponse: 0x%s\n", r.SW, hex.EncodeToString(r.Data))
 }
 
@@ -99,7 +99,7 @@ type KeycardInfoResult struct {
 	Cash    CashInfo    `json:"cash"`
 }
 
-func (r *KeycardInfoResult) Format() string {
+func (r *KeycardInfoResult) Format(_ bool) string {
 	var w strings.Builder
 	kc := r.Keycard
 	w.WriteString("Keycard Applet:\n")
@@ -188,7 +188,7 @@ type AppStatusResult struct {
 	KeyPath        string `json:"key_path"`
 }
 
-func (r AppStatusResult) Format() string {
+func (r AppStatusResult) Format(_ bool) string {
 	return fmt.Sprintf("PIN retry count: %d\nPUK retry count: %d\nKey initialized: %v\nKey path: %s\n",
 		r.PinRetryCount, r.PUKRetryCount, r.KeyInitialized, r.KeyPath)
 }
@@ -199,8 +199,12 @@ type PairingResult struct {
 	PairingIndex int    `json:"pairing_index"`
 }
 
-func (r PairingResult) Format() string {
-	return fmt.Sprintf("Pairing key: %s\nPairing index: %d\n", r.PairingKey, r.PairingIndex)
+func (r PairingResult) Format(showSecrets bool) string {
+	key := r.PairingKey
+	if !showSecrets {
+		key = "***"
+	}
+	return fmt.Sprintf("Pairing key: %s\nPairing index: %d\n", key, r.PairingIndex)
 }
 
 // KeyGenerateResult — "generate-key"
@@ -208,7 +212,7 @@ type KeyGenerateResult struct {
 	KeyUID string `json:"key_uid"`
 }
 
-func (r KeyGenerateResult) Format() string {
+func (r KeyGenerateResult) Format(_ bool) string {
 	return fmt.Sprintf("Key generated. UID: %s\n", r.KeyUID)
 }
 
@@ -217,7 +221,7 @@ type KeyLoadResult struct {
 	KeyID string `json:"key_id"`
 }
 
-func (r KeyLoadResult) Format() string {
+func (r KeyLoadResult) Format(_ bool) string {
 	return fmt.Sprintf("Seed loaded. Key ID: %s\n", r.KeyID)
 }
 
@@ -228,12 +232,21 @@ type InitResult struct {
 	PairingPassword string `json:"pairing_password,omitempty"`
 }
 
-func (r InitResult) Format() string {
+func (r InitResult) Format(showSecrets bool) string {
 	var w strings.Builder
-	w.WriteString(fmt.Sprintf("PIN: %s\n", r.Pin))
-	w.WriteString(fmt.Sprintf("PUK: %s\n", r.Puk))
+	if showSecrets {
+		w.WriteString(fmt.Sprintf("PIN: %s\n", r.Pin))
+		w.WriteString(fmt.Sprintf("PUK: %s\n", r.Puk))
+	} else {
+		w.WriteString("PIN: ***\n")
+		w.WriteString("PUK: ***\n")
+	}
 	if r.PairingPassword != "" {
-		w.WriteString(fmt.Sprintf("Pairing password: %s\n", r.PairingPassword))
+		if showSecrets {
+			w.WriteString(fmt.Sprintf("Pairing password: %s\n", r.PairingPassword))
+		} else {
+			w.WriteString("Pairing password: ***\n")
+		}
 	}
 	return w.String()
 }
@@ -246,7 +259,7 @@ type KeycardSelectResult struct {
 	AppVersion  string `json:"app_version"`
 }
 
-func (r KeycardSelectResult) Format() string {
+func (r KeycardSelectResult) Format(_ bool) string {
 	return fmt.Sprintf("Installed: %v\nInitialized: %v\nKey Initialized: %v\nVersion: %s\nKeyUID: %s\n",
 		r.Installed, r.Initialized, r.KeyUID != "", r.AppVersion, r.KeyUID)
 }
@@ -258,7 +271,7 @@ type CashSelectResult struct {
 	Version   string `json:"version"`
 }
 
-func (r CashSelectResult) Format() string {
+func (r CashSelectResult) Format(_ bool) string {
 	return fmt.Sprintf("Installed: %v\nPublicKey: %s\nVersion: %s\n",
 		r.Installed, r.PublicKey, r.Version)
 }
@@ -268,7 +281,7 @@ type GPStatusResult struct {
 	Lifecycle string `json:"lifecycle"`
 }
 
-func (r GPStatusResult) Format() string {
+func (r GPStatusResult) Format(_ bool) string {
 	return fmt.Sprintf("Card status: %s\n", r.Lifecycle)
 }
 
@@ -277,7 +290,7 @@ type ActionResult struct {
 	Message string `json:"message"`
 }
 
-func (r ActionResult) Format() string {
+func (r ActionResult) Format(_ bool) string {
 	return r.Message + "\n"
 }
 
@@ -286,7 +299,7 @@ type UnpairResult struct {
 	Index int `json:"index"`
 }
 
-func (r UnpairResult) Format() string {
+func (r UnpairResult) Format(_ bool) string {
 	return fmt.Sprintf("Unpaired (index: %d)\n", r.Index)
 }
 
@@ -296,7 +309,7 @@ type StoreDataResult struct {
 	Bytes int    `json:"bytes"`
 }
 
-func (r StoreDataResult) Format() string {
+func (r StoreDataResult) Format(_ bool) string {
 	return fmt.Sprintf("Data stored (%s, %d bytes)\n", r.Type, r.Bytes)
 }
 
@@ -305,7 +318,7 @@ type SetNDEFResult struct {
 	Bytes int `json:"bytes"`
 }
 
-func (r SetNDEFResult) Format() string {
+func (r SetNDEFResult) Format(_ bool) string {
 	return fmt.Sprintf("NDEF set (%d bytes)\n", r.Bytes)
 }
 
@@ -316,9 +329,17 @@ type SetSecretsResult struct {
 	PairingPassword string `json:"pairing_password"`
 }
 
-func (r SetSecretsResult) Format() string {
+func (r SetSecretsResult) Format(showSecrets bool) string {
+	pin := r.Pin
+	puk := r.Puk
+	pairing := r.PairingPassword
+	if !showSecrets {
+		pin = "***"
+		puk = "***"
+		pairing = "***"
+	}
 	return fmt.Sprintf("Secrets set (PIN: %s, PUK: %s, Pairing: %s)\n",
-		r.Pin, r.Puk, r.PairingPassword)
+		pin, puk, pairing)
 }
 
 // SetPairingResult — "keycard-set-pairing" (shell-only)
@@ -327,9 +348,13 @@ type SetPairingResult struct {
 	PairingIndex int    `json:"pairing_index"`
 }
 
-func (r SetPairingResult) Format() string {
+func (r SetPairingResult) Format(showSecrets bool) string {
+	key := r.PairingKey
+	if !showSecrets {
+		key = "***"
+	}
 	return fmt.Sprintf("Pairing set (key: %s, index: %d)\n",
-		r.PairingKey, r.PairingIndex)
+		key, r.PairingIndex)
 }
 
 // LEEKeyResult — "export-lee-key"
@@ -338,7 +363,7 @@ type LEEKeyResult struct {
 	Path string `json:"path"`
 }
 
-func (r LEEKeyResult) Format() string {
+func (r LEEKeyResult) Format(_ bool) string {
 	return fmt.Sprintf("LEE key: %s\n", r.Key)
 }
 
@@ -348,7 +373,7 @@ type BIP85KeyResult struct {
 	Path string `json:"path"`
 }
 
-func (r BIP85KeyResult) Format() string {
+func (r BIP85KeyResult) Format(_ bool) string {
 	return fmt.Sprintf("BIP85 key: %s\n", r.Key)
 }
 
@@ -361,7 +386,7 @@ type ExportedKeyResult struct {
 	Path       string `json:"path,omitempty"`
 }
 
-func (r ExportedKeyResult) Format() string {
+func (r ExportedKeyResult) Format(_ bool) string {
 	var w strings.Builder
 	if r.PrivateKey != "" {
 		w.WriteString(fmt.Sprintf("Private key: %s\n", r.PrivateKey))
@@ -391,7 +416,7 @@ type SignatureResult struct {
 	File         string `json:"file,omitempty"`
 }
 
-func (r SignatureResult) Format() string {
+func (r SignatureResult) Format(_ bool) string {
 	var w strings.Builder
 	w.WriteString(fmt.Sprintf("Signature R: %s\n", r.R))
 	w.WriteString(fmt.Sprintf("Signature S: %s\n", r.S))
@@ -411,7 +436,7 @@ type DataResult struct {
 	Bytes int    `json:"bytes,omitempty"`
 }
 
-func (r DataResult) Format() string {
+func (r DataResult) Format(_ bool) string {
 	return fmt.Sprintf("Data (%s): %s\n", r.Type, r.Data)
 }
 
@@ -420,7 +445,7 @@ type ChallengeResult struct {
 	Challenge string `json:"challenge"`
 }
 
-func (r ChallengeResult) Format() string {
+func (r ChallengeResult) Format(_ bool) string {
 	return fmt.Sprintf("Challenge: %s\n", r.Challenge)
 }
 
@@ -429,7 +454,7 @@ type NameResult struct {
 	Name string `json:"name"`
 }
 
-func (r NameResult) Format() string {
+func (r NameResult) Format(_ bool) string {
 	return fmt.Sprintf("Card name: %s\n", r.Name)
 }
 
@@ -439,7 +464,7 @@ type IdentifyResult struct {
 	PublicKey  string `json:"public_key"`
 }
 
-func (r IdentifyResult) Format() string {
+func (r IdentifyResult) Format(_ bool) string {
 	return fmt.Sprintf("Identification OK (public key: %s)\n", r.PublicKey)
 }
 
@@ -448,7 +473,7 @@ type SecureChannelVersionResult struct {
 	Version string `json:"secure_channel_version"`
 }
 
-func (r SecureChannelVersionResult) Format() string {
+func (r SecureChannelVersionResult) Format(_ bool) string {
 	return fmt.Sprintf("Secure channel version: %s\n", r.Version)
 }
 
@@ -457,7 +482,7 @@ type MnemonicResult struct {
 	Indexes []int `json:"mnemonic_indexes"`
 }
 
-func (r MnemonicResult) Format() string {
+func (r MnemonicResult) Format(_ bool) string {
 	return fmt.Sprintf("Mnemonic indexes: %v\n", r.Indexes)
 }
 
@@ -466,7 +491,7 @@ type LoadIdentResult struct {
 	Bytes int `json:"bytes"`
 }
 
-func (r LoadIdentResult) Format() string {
+func (r LoadIdentResult) Format(_ bool) string {
 	return fmt.Sprintf("Identity certificate loaded (%d bytes)\n", r.Bytes)
 }
 
@@ -905,13 +930,14 @@ func doCashSign(cashKC *keycard.CashCommandSet, data []byte) (*types.Signature, 
 
 // shellCtx holds the card channels and session state for shell commands.
 type shellCtx struct {
-	ch      types.Channel
-	kc      *keycard.CommandSet
-	cashKC  *keycard.CashCommandSet
-	identKC *keycard.IdentCommandSet
-	gp      *globalplatform.CommandSet
-	secrets *keycard.Secrets
-	write   func(string)
+	ch          types.Channel
+	kc          *keycard.CommandSet
+	cashKC      *keycard.CashCommandSet
+	identKC     *keycard.IdentCommandSet
+	gp          *globalplatform.CommandSet
+	secrets     *keycard.Secrets
+	write       func(string)
+	showSecrets bool
 }
 
 // shellOutput holds both typed result and formatted text for a shell command.
@@ -921,8 +947,8 @@ type shellOutput struct {
 }
 
 // newShellOutput creates a shellOutput from a typed result.
-func newShellOutput(r Result) *shellOutput {
-	return &shellOutput{Result: r, Text: r.Format()}
+func newShellOutput(r Result, showSecrets bool) *shellOutput {
+	return &shellOutput{Result: r, Text: r.Format(showSecrets)}
 }
 
 // shellFn is the signature for a registered shell command.

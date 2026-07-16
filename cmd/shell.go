@@ -38,6 +38,10 @@ func ShellCommand() *cli.Command {
 				Aliases: []string{"j"},
 				Usage:   "Output each command result as a JSON line (JSONL)",
 			},
+			&cli.BoolFlag{
+				Name:  "show-secrets",
+				Usage: "Show secrets (PIN, PUK, pairing keys) in output. Hidden by default",
+			},
 		},
 		Action: cmdShell,
 	}
@@ -61,24 +65,25 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	scriptFile := cmd.String("file")
+	showSecrets := cmd.Bool("show-secrets")
 	if scriptFile != "" {
 		f, err := os.Open(scriptFile)
 		if err != nil {
 			return fmt.Errorf("error opening script file: %w", err)
 		}
 		defer f.Close()
-		return runShell(card, f, cmd.Bool("json"), cmd, kcSecrets)
+		return runShell(card, f, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
 	}
 
 	fi, _ := os.Stdin.Stat()
 	if (fi.Mode() & os.ModeCharDevice) == 0 {
-		return runShell(card, os.Stdin, cmd.Bool("json"), cmd, kcSecrets)
+		return runShell(card, os.Stdin, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
 	}
 
 	return errors.New("non-interactive shell. You must pipe commands or use -f flag")
 }
 
-func runShell(card *scard.Card, input io.Reader, jsonOutput bool, cmd *cli.Command, secrets *keycard.Secrets) error {
+func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bool, cmd *cli.Command, secrets *keycard.Secrets) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc := newCommandSet(ch, cmd)
 	cashKC := keycard.NewCashCommandSet(ch)
@@ -90,16 +95,18 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool, cmd *cli.Comma
 
 	shell := &shellRunner{
 		ctx: &shellCtx{
-			ch:      ch,
-			kc:      kc,
-			cashKC:  cashKC,
-			identKC: identKC,
-			gp:      gp,
-			secrets: secrets,
-			write:   write,
+			ch:          ch,
+			kc:          kc,
+			cashKC:      cashKC,
+			identKC:     identKC,
+			gp:          gp,
+			secrets:     secrets,
+			write:       write,
+			showSecrets: showSecrets,
 		},
-		out:        out,
-		jsonOutput: jsonOutput,
+		out:         out,
+		jsonOutput:  jsonOutput,
+		showSecrets: showSecrets,
 	}
 
 	// Build command map from registry
@@ -131,10 +138,11 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool, cmd *cli.Comma
 }
 
 type shellRunner struct {
-	ctx        *shellCtx
-	commands   map[string]shellFn
-	out        *bytes.Buffer
-	jsonOutput bool
+	ctx         *shellCtx
+	commands    map[string]shellFn
+	out         *bytes.Buffer
+	jsonOutput  bool
+	showSecrets bool
 }
 
 func (s *shellRunner) flushOut() {
@@ -190,7 +198,7 @@ func (s *shellRunner) evalLine(rawLine string) error {
 			if s.jsonOutput {
 				line := map[string]interface{}{
 					"command": parts[0],
-					"result":  output.Result,
+					"result":  maskResultForJSON(output.Result, s.showSecrets),
 				}
 				data, _ := json.Marshal(line)
 				fmt.Fprintln(os.Stdout, string(data))
@@ -266,4 +274,37 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+// maskResultForJSON returns a copy of r with secret fields masked if showSecrets is false.
+func maskResultForJSON(r Result, showSecrets bool) interface{} {
+	if showSecrets {
+		return r
+	}
+	switch v := r.(type) {
+	case InitResult:
+		return InitResult{
+			Pin:             "***",
+			Puk:             "***",
+			PairingPassword: "***",
+		}
+	case SetSecretsResult:
+		return SetSecretsResult{
+			Pin:             "***",
+			Puk:             "***",
+			PairingPassword: "***",
+		}
+	case SetPairingResult:
+		return SetPairingResult{
+			PairingKey:   "***",
+			PairingIndex: v.PairingIndex,
+		}
+	case PairingResult:
+		return PairingResult{
+			PairingKey:   "***",
+			PairingIndex: v.PairingIndex,
+		}
+	default:
+		return r
+	}
 }

@@ -89,6 +89,10 @@ func main() {
 				Name:  "whitelist-card",
 				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed)",
 			},
+			&cli.BoolFlag{
+				Name:  "show-secrets",
+				Usage: "Show secrets (PIN, PUK, pairing keys) in output. Hidden by default",
+			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			initLogger(cmd.String("log-level"))
