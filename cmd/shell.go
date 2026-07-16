@@ -50,6 +50,16 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer cleanup()
 
+	secrets := internal.ResolveSecrets(
+		cmd.String("pin"),
+		cmd.String("puk"),
+		cmd.String("pairing-password"),
+	)
+	var kcSecrets *keycard.Secrets
+	if secrets.Pin != "" || secrets.Puk != "" || secrets.PairingPass != "" {
+		kcSecrets = keycard.NewSecrets(secrets.Pin, secrets.Puk, secrets.PairingPass)
+	}
+
 	scriptFile := cmd.String("file")
 	if scriptFile != "" {
 		f, err := os.Open(scriptFile)
@@ -57,20 +67,20 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("error opening script file: %w", err)
 		}
 		defer f.Close()
-		return runShell(card, f, cmd.Bool("json"))
+		return runShell(card, f, cmd.Bool("json"), cmd, kcSecrets)
 	}
 
 	fi, _ := os.Stdin.Stat()
 	if (fi.Mode() & os.ModeCharDevice) == 0 {
-		return runShell(card, os.Stdin, cmd.Bool("json"))
+		return runShell(card, os.Stdin, cmd.Bool("json"), cmd, kcSecrets)
 	}
 
 	return errors.New("non-interactive shell. You must pipe commands or use -f flag")
 }
 
-func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
+func runShell(card *scard.Card, input io.Reader, jsonOutput bool, cmd *cli.Command, secrets *keycard.Secrets) error {
 	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+	kc := newCommandSet(ch, cmd)
 	cashKC := keycard.NewCashCommandSet(ch)
 	identKC := keycard.NewIdentCommandSet(ch)
 	gp := globalplatform.NewCommandSet(ch)
@@ -85,6 +95,7 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool) error {
 			cashKC:  cashKC,
 			identKC: identKC,
 			gp:      gp,
+			secrets: secrets,
 			write:   write,
 		},
 		out:        out,
@@ -203,6 +214,9 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 			return value, nil
 		},
 		"session_pairing_key": func() (string, error) {
+			if internal.IsSecureChannelV2(s.ctx.kc) {
+				return "", nil
+			}
 			pairing := s.ctx.kc.Pairing()
 			if pairing == nil {
 				return "", errors.New("pairing key not known")
@@ -211,6 +225,9 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 			return fmt.Sprintf("%x", key[:]), nil
 		},
 		"session_pairing_index": func() (string, error) {
+			if internal.IsSecureChannelV2(s.ctx.kc) {
+				return "0", nil
+			}
 			pairing := s.ctx.kc.Pairing()
 			if pairing == nil {
 				return "", errors.New("pairing index not known")

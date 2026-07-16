@@ -72,8 +72,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-export-bip85", usage: "Export a BIP85 derived key", handler: shellKeycardExportBIP85},
 
 		// Signing
-		{name: "keycard-sign", usage: "Sign a 32-byte hash", handler: shellKeycardSign},
-		{name: "keycard-sign-with-path", usage: "Sign with a derivation path", handler: shellKeycardSignWithPath},
+		{name: "keycard-sign", usage: "Sign a 32-byte hash (optional derivation path)", handler: shellKeycardSign},
 		{name: "keycard-sign-message", usage: "Sign a message (Ethereum Signed Message format)", handler: shellKeycardSignMessage},
 		{name: "keycard-sign-file", usage: "Sign a file (hashes file content)", handler: shellKeycardSignFile},
 		{name: "keycard-sign-pinless", usage: "Sign without PIN (applet < 4.0 only)", handler: shellKeycardSignPinless},
@@ -394,6 +393,9 @@ func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) 
 // ---------------------------------------------------------------------------
 
 func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
+	if internal.IsSecureChannelV2(ctx.kc) {
+		return newShellOutput(ActionResult{Message: "pairing is not needed for Secure Channel V2"}), nil
+	}
 	if ctx.secrets == nil {
 		return nil, errors.New("cannot pair without setting secrets")
 	}
@@ -409,6 +411,9 @@ func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
 }
 
 func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if internal.IsSecureChannelV2(ctx.kc) {
+		return newShellOutput(ActionResult{Message: "unpair is not needed for Secure Channel V2"}), nil
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -427,7 +432,7 @@ func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
 
 func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if internal.IsSecureChannelV2(ctx.kc) {
-		return nil, errors.New("unpair-others is not needed for Secure Channel V2 cards")
+		return newShellOutput(ActionResult{Message: "unpair-others is not needed for Secure Channel V2 cards"}), nil
 	}
 	if err := ctx.kc.UnpairOthers(); err != nil {
 		return nil, err
@@ -436,7 +441,7 @@ func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (*shellOutput, error) {
 }
 
 func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	if ctx.kc.Pairing() == nil {
+	if ctx.kc.Pairing() == nil && !internal.IsSecureChannelV2(ctx.kc) {
 		return nil, errors.New("cannot open secure channel without setting pairing info")
 	}
 	if err := ctx.kc.AutoOpenSecureChannel(); err != nil {
@@ -654,34 +659,26 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 // ---------------------------------------------------------------------------
 
 func shellKeycardSign(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if err := requireArgs(args, 1); err != nil {
+	if err := requireArgs(args, 1, 2); err != nil {
 		return nil, err
 	}
 	data, err := parseHexShell(args[0])
 	if err != nil {
 		return nil, err
 	}
-	sig, err := doKeycardSign(ctx.kc, data)
-	if err != nil {
-		return nil, err
+	var sig *types.Signature
+	if len(args) == 2 {
+		sig, err = doKeycardSignWithPath(ctx.kc, data, args[1])
+	} else {
+		sig, err = doKeycardSign(ctx.kc, data)
 	}
-	return newShellOutput(newSignatureResult(sig)), nil
-}
-
-func shellKeycardSignWithPath(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if err := requireArgs(args, 2); err != nil {
-		return nil, err
-	}
-	data, err := parseHexShell(args[0])
-	if err != nil {
-		return nil, err
-	}
-	sig, err := doKeycardSignWithPath(ctx.kc, data, args[1])
 	if err != nil {
 		return nil, err
 	}
 	result := newSignatureResult(sig)
-	result.Path = args[1]
+	if len(args) == 2 {
+		result.Path = args[1]
+	}
 	return newShellOutput(result), nil
 }
 
