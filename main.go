@@ -81,6 +81,10 @@ func main() {
 				Name:  "card-ca",
 				Usage: "CA public key for V2 certificate verification (hex, 33 bytes compressed)",
 			},
+			&cli.BoolFlag{
+				Name:  "test-card",
+				Usage: "Use test card CA (shortcut for --card-ca with test CA public key)",
+			},
 			&cli.StringFlag{
 				Name:  "whitelist-card",
 				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed)",

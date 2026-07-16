@@ -131,9 +131,9 @@ func KeyCommands() []*cli.Command {
 					Required: true,
 				},
 				&cli.IntFlag{
-					Name:     "length",
-					Usage:    "Key length in bytes",
-					Required: true,
+					Name:  "length",
+					Usage: "Key length in bytes",
+					Value: 64,
 				},
 			},
 			Action: cmdExportBIP85,

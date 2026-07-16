@@ -137,11 +137,19 @@ func runIdent(cmd *cli.Command, fn func(identKC *keycard.IdentCommandSet, cmd *c
 	return fn(identKC, cmd)
 }
 
+// testCardCA is the CA public key for test cards (hex, 33 bytes compressed).
+const testCardCA = "025877220AAAE6E54A6F974602D5995C0FE24A3EA7DDABD8644BEC795B9DA00743"
+
 // newCommandSet creates a keycard.CommandSet, optionally using a custom CA
 // public key and/or whitelisted card identity key from CLI flags.
 func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	cardCA := cmd.String("card-ca")
 	whitelistCard := cmd.String("whitelist-card")
+
+	// --test-card is a shortcut for --card-ca with the test CA public key
+	if cmd.Bool("test-card") && cardCA == "" {
+		cardCA = testCardCA
+	}
 
 	if cardCA == "" && whitelistCard == "" {
 		return keycard.NewCommandSet(ch)

@@ -647,12 +647,16 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 	if !internal.IsAppletV4Plus(ctx.kc) {
 		return nil, errors.New("export-bip85 is only available on applet version 4.0+")
 	}
-	if err := requireArgs(args, 2); err != nil {
+	if err := requireArgs(args, 1, 2); err != nil {
 		return nil, err
 	}
-	length, err := strconv.ParseInt(args[1], 10, 8)
-	if err != nil {
-		return nil, err
+	length := int64(64)
+	if len(args) == 2 {
+		var err error
+		length, err = strconv.ParseInt(args[1], 10, 8)
+		if err != nil {
+			return nil, err
+		}
 	}
 	key, err := ctx.kc.ExportBIP85(args[0], uint8(length))
 	if err != nil {
