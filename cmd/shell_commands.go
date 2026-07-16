@@ -62,7 +62,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-remove-key", usage: "Remove the current key", handler: shellKeycardRemoveKey},
 		{name: "keycard-derive-key", usage: "Derive a key at the given path (applet < 4.0 only)", handler: shellKeycardDeriveKey},
 		{name: "keycard-load-seed", usage: "Load a seed onto the card (mnemonic phrase or hex)", handler: shellKeycardLoadSeed},
-		{name: "keycard-load-lee-key", usage: "Load a LEE key onto the card (applet >= 4.0 only)", handler: shellKeycardLoadLEEKey},
+		{name: "keycard-load-lee-seed", usage: "Load a LEE seed onto the card (applet >= 4.0 only)", handler: shellKeycardLoadLEESeed},
 		{name: "keycard-export-key-public", usage: "Export the public key", handler: shellKeycardExportKeyPublic},
 		{name: "keycard-export-key-private", usage: "Export the private key", handler: shellKeycardExportKeyPrivate},
 		{name: "keycard-export-extended-key", usage: "Export the extended key (public key + chain code)", handler: shellKeycardExportExtendedKey},
@@ -552,21 +552,33 @@ func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 	}, ctx.showSecrets), nil
 }
 
-func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
+func shellKeycardLoadLEESeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if !internal.IsAppletV4Plus(ctx.kc) {
-		return nil, errors.New("load-lee-key is only available on applet version 4.0+")
+		return nil, errors.New("load-lee-seed is only available on applet version 4.0+")
 	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
-	key, err := parseHexShell(args[0])
-	if err != nil {
+
+	var seed []byte
+	input := args[0]
+
+	// Try mnemonic first; if it validates, derive the seed from the phrase.
+	// Otherwise fall back to hex parsing.
+	if err := types.ValidateMnemonic(input); err == nil {
+		seed = types.BinarySeedFromPhrase(input, "")
+	} else {
+		var err error
+		seed, err = parseHexShell(input)
+		if err != nil {
+			return nil, fmt.Errorf("not a valid mnemonic and not valid hex: %w", err)
+		}
+	}
+
+	if err := ctx.kc.LoadLEEKey(seed); err != nil {
 		return nil, err
 	}
-	if err := ctx.kc.LoadLEEKey(key); err != nil {
-		return nil, err
-	}
-	return newShellOutput(ActionResult{Message: "LEE key loaded"}, ctx.showSecrets), nil
+	return newShellOutput(ActionResult{Message: "LEE seed loaded"}, ctx.showSecrets), nil
 }
 
 func shellKeycardExportKeyPublic(ctx *shellCtx, args []string) (*shellOutput, error) {

@@ -53,16 +53,19 @@ func KeyCommands() []*cli.Command {
 			Action: cmdLoadSeed,
 		},
 		{
-			Name:  "load-lee-key",
-			Usage: "Load a LEE key onto the card (applet >= 4.0 only)",
+			Name:  "load-lee-seed",
+			Usage: "Load a LEE seed onto the card (applet >= 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:     "hex",
-					Usage:    "Key as hex string",
-					Required: true,
+					Name:  "hex",
+					Usage: "Seed as hex string",
+				},
+				&cli.StringFlag{
+					Name:  "mnemonic",
+					Usage: "BIP39 mnemonic phrase",
 				},
 			},
-			Action: cmdLoadLEEKey,
+			Action: cmdLoadLEESeed,
 		},
 		{
 			Name:  "export-public-key",
@@ -211,20 +214,39 @@ func cmdLoadSeed(ctx context.Context, cmd *cli.Command) error {
 	})
 }
 
-func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
-	key, err := internal.ParseHex(cmd.String("hex"))
-	if err != nil {
-		return fmt.Errorf("invalid hex key: %w", err)
+func cmdLoadLEESeed(ctx context.Context, cmd *cli.Command) error {
+	mnemonic := cmd.String("mnemonic")
+	seedHex := cmd.String("hex")
+
+	if mnemonic != "" && seedHex != "" {
+		return fmt.Errorf("cannot specify both --mnemonic and --hex")
+	}
+	if mnemonic == "" && seedHex == "" {
+		return fmt.Errorf("must specify either --mnemonic or --hex")
+	}
+
+	var seed []byte
+	if mnemonic != "" {
+		if err := types.ValidateMnemonic(mnemonic); err != nil {
+			return fmt.Errorf("invalid BIP39 mnemonic: %w", err)
+		}
+		seed = types.BinarySeedFromPhrase(mnemonic, "")
+	} else {
+		var err error
+		seed, err = internal.ParseHex(seedHex)
+		if err != nil {
+			return fmt.Errorf("invalid hex seed: %w", err)
+		}
 	}
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if !internal.IsAppletV4Plus(kc) {
-			return fmt.Errorf("load-lee-key is only available on applet version 4.0+")
+			return fmt.Errorf("load-lee-seed is only available on applet version 4.0+")
 		}
-		if err := kc.LoadLEEKey(key); err != nil {
+		if err := kc.LoadLEEKey(seed); err != nil {
 			return err
 		}
-		return PrintResultCLI(cmd, ActionResult{Message: "LEE key loaded"})
+		return PrintResultCLI(cmd, ActionResult{Message: "LEE seed loaded"})
 	})
 }
 
