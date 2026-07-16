@@ -42,7 +42,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-get-status", usage: "Get card status", handler: shellKeycardGetStatus},
 
 		// Secrets / pairing (shell-specific for session state)
-		{name: "keycard-set-secrets", usage: "Set session secrets (PIN, PUK, pairing password)", handler: shellKeycardSetSecrets},
+		{name: "keycard-set-secrets", usage: "Set session secrets (PIN, PUK, pairing password [optional])", handler: shellKeycardSetSecrets},
 		{name: "keycard-set-pairing", usage: "Set session pairing info", handler: shellKeycardSetPairing},
 
 		// Pairing
@@ -72,7 +72,7 @@ func RegisterShellCommands() []shellCommand {
 
 		// Signing
 		{name: "keycard-sign", usage: "Sign a 32-byte hash (optional derivation path)", handler: shellKeycardSign},
-		{name: "keycard-sign-message", usage: "Sign a message (Ethereum Signed Message format)", handler: shellKeycardSignMessage},
+		{name: "keycard-sign-message", usage: "Sign a message (Ethereum Signed Message format, optional path)", handler: shellKeycardSignMessage},
 		{name: "keycard-sign-file", usage: "Sign a file (hashes file content)", handler: shellKeycardSignFile},
 		{name: "keycard-sign-pinless", usage: "Sign without PIN (applet < 4.0 only)", handler: shellKeycardSignPinless},
 		{name: "keycard-sign-message-pinless", usage: "Sign a message without PIN (applet < 4.0 only)", handler: shellKeycardSignMessagePinless},
@@ -355,14 +355,18 @@ func shellKeycardGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 // ---------------------------------------------------------------------------
 
 func shellKeycardSetSecrets(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if err := requireArgs(args, 3); err != nil {
+	if err := requireArgs(args, 2, 3); err != nil {
 		return nil, err
 	}
-	ctx.secrets = keycard.NewSecrets(args[0], args[1], args[2])
+	pairingPass := internal.KeycardDefaultPairing
+	if len(args) == 3 {
+		pairingPass = args[2]
+	}
+	ctx.secrets = keycard.NewSecrets(args[0], args[1], pairingPass)
 	return newShellOutput(SetSecretsResult{
 		Pin:             args[0],
 		Puk:             args[1],
-		PairingPassword: args[2],
+		PairingPassword: pairingPass,
 	}), nil
 }
 
@@ -692,12 +696,28 @@ func shellKeycardSignMessage(ctx *shellCtx, args []string) (*shellOutput, error)
 	if len(args) < 1 {
 		return nil, errors.New("keycard-sign-message requires at least 1 parameter")
 	}
-	hash := hashEthereumMessage(strings.Join(args, " "))
-	sig, err := doKeycardSign(ctx.kc, hash)
+	var path string
+	msgArgs := args
+	if len(args) > 1 && strings.HasPrefix(args[len(args)-1], "m/") {
+		path = args[len(args)-1]
+		msgArgs = args[:len(args)-1]
+	}
+	hash := hashEthereumMessage(strings.Join(msgArgs, " "))
+	var sig *types.Signature
+	var err error
+	if path != "" {
+		sig, err = doKeycardSignWithPath(ctx.kc, hash, path)
+	} else {
+		sig, err = doKeycardSign(ctx.kc, hash)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(newSignatureResult(sig)), nil
+	result := newSignatureResult(sig)
+	if path != "" {
+		result.Path = path
+	}
+	return newShellOutput(result), nil
 }
 
 func shellKeycardSignFile(ctx *shellCtx, args []string) (*shellOutput, error) {

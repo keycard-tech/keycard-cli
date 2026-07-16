@@ -10,4 +10,4 @@ keycard-verify-pin {{ session_pin }}
 keycard-unpair {{ session_pairing_index }}
 
 # sign a message
-keycard-sign-message hello
+keycard-sign-message hello m/1/2/3

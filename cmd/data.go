@@ -176,7 +176,7 @@ func cmdSetNDEF(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGetStatus(ctx context.Context, cmd *cli.Command) error {
-	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
+	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		result, err := doKeycardGetStatusResult(kc)
 		if err != nil {
 			return err

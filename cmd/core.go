@@ -579,10 +579,14 @@ func doKeycardInit(kc *keycard.CommandSet, pin, puk, pairingPass, altPin string,
 }
 
 // doKeycardGetStatus returns application and key path status.
+// On applet >= 4.0, GetStatusKeyPath is not supported so keyStatus will be nil.
 func doKeycardGetStatus(kc *keycard.CommandSet) (*types.ApplicationStatus, *types.ApplicationStatus, error) {
 	appStatus, err := kc.GetStatusApplication()
 	if err != nil {
 		return nil, nil, err
+	}
+	if internal.IsAppletV4Plus(kc) {
+		return appStatus, nil, nil
 	}
 	keyStatus, err := kc.GetStatusKeyPath()
 	if err != nil {
@@ -597,12 +601,15 @@ func doKeycardGetStatusResult(kc *keycard.CommandSet) (AppStatusResult, error) {
 	if err != nil {
 		return AppStatusResult{}, err
 	}
-	return AppStatusResult{
+	result := AppStatusResult{
 		PinRetryCount:  appStatus.PinRetryCount,
 		PUKRetryCount:  appStatus.PUKRetryCount,
 		KeyInitialized: appStatus.KeyInitialized,
-		KeyPath:        keyStatus.Path,
-	}, nil
+	}
+	if keyStatus != nil {
+		result.KeyPath = keyStatus.Path
+	}
+	return result, nil
 }
 
 // doKeycardInfo builds comprehensive card info.
