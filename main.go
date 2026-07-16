@@ -52,6 +52,12 @@ func main() {
 		Version: version,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:    "log-level",
+				Aliases: []string{"l"},
+				Usage:   "Log level: debug, info, warn, error",
+				Value:   "info",
+			},
+			&cli.StringFlag{
 				Name:  "pin",
 				Usage: "PIN (or KEYCARD_PIN env var)",
 			},
