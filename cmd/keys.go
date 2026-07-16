@@ -230,6 +230,9 @@ func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) && cmd.String("path") == "" {
+			return fmt.Errorf("--path is required for applet version 4.0+")
+		}
 		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPublicOnly)
 		if err != nil {
 			return err
@@ -241,6 +244,9 @@ func cmdExportPublicKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) && cmd.String("path") == "" {
+			return fmt.Errorf("--path is required for applet version 4.0+")
+		}
 		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
 		if err != nil {
 			return err
@@ -252,6 +258,9 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) && cmd.String("path") == "" {
+			return fmt.Errorf("--path is required for applet version 4.0+")
+		}
 		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyExtendedPublic)
 		if err != nil {
 			return err

@@ -145,6 +145,9 @@ func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) e
 		authLevel = AuthNone
 	}
 	return runCard(cmd, authLevel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) && path == "" {
+			return fmt.Errorf("--path is required for applet version 4.0+")
+		}
 		sig, err := signWithParams(kc, data, path, algo, pinless)
 		if err != nil {
 			return err
@@ -159,6 +162,9 @@ func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless
 		authLevel = AuthNone
 	}
 	return runCard(cmd, authLevel, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) && path == "" {
+			return fmt.Errorf("--path is required for applet version 4.0+")
+		}
 		sig, err := signWithParams(kc, data, path, algo, pinless)
 		if err != nil {
 			return err
