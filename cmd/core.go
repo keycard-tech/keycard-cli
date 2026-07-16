@@ -93,10 +93,9 @@ func (r GPResult) Format(_ bool) string {
 	return fmt.Sprintf("SW: 0x%04x\nResponse: 0x%s\n", r.SW, hex.EncodeToString(r.Data))
 }
 
-// KeycardInfoResult holds comprehensive card information.
+// KeycardInfoResult holds keycard applet info (for the "info" CLI/shell command).
 type KeycardInfoResult struct {
 	Keycard KeycardInfo `json:"keycard"`
-	Cash    CashInfo    `json:"cash"`
 }
 
 func (r *KeycardInfoResult) Format(_ bool) string {
@@ -134,7 +133,16 @@ func (r *KeycardInfoResult) Format(_ bool) string {
 			w.WriteString(fmt.Sprintf("  Certificate verification error: %s\n", kc.CertVerification))
 		}
 	}
+	return w.String()
+}
 
+// CashInfoResult holds cash applet info (for the "cash-info" CLI/shell command).
+type CashInfoResult struct {
+	Cash CashInfo `json:"cash"`
+}
+
+func (r *CashInfoResult) Format(_ bool) string {
+	var w strings.Builder
 	w.WriteString("Cash Applet:\n")
 	cash := r.Cash
 	if !cash.Installed {
@@ -249,31 +257,6 @@ func (r InitResult) Format(showSecrets bool) string {
 		}
 	}
 	return w.String()
-}
-
-// KeycardSelectResult — "keycard-select" (shell-only)
-type KeycardSelectResult struct {
-	Installed   bool   `json:"installed"`
-	Initialized bool   `json:"initialized"`
-	KeyUID      string `json:"key_uid"`
-	AppVersion  string `json:"app_version"`
-}
-
-func (r KeycardSelectResult) Format(_ bool) string {
-	return fmt.Sprintf("Installed: %v\nInitialized: %v\nKey Initialized: %v\nVersion: %s\nKeyUID: %s\n",
-		r.Installed, r.Initialized, r.KeyUID != "", r.AppVersion, r.KeyUID)
-}
-
-// CashSelectResult — "cash-select" (shell-only)
-type CashSelectResult struct {
-	Installed bool   `json:"installed"`
-	PublicKey string `json:"public_key"`
-	Version   string `json:"version"`
-}
-
-func (r CashSelectResult) Format(_ bool) string {
-	return fmt.Sprintf("Installed: %v\nPublicKey: %s\nVersion: %s\n",
-		r.Installed, r.PublicKey, r.Version)
 }
 
 // GPStatusResult — "gp-get-status"
@@ -585,15 +568,6 @@ func doGPGetStatus(gp *globalplatform.CommandSet) (*types.CardStatus, error) {
 // Keycard lifecycle core functions
 // ---------------------------------------------------------------------------
 
-// doKeycardSelect selects the keycard applet and returns its info.
-// selectErr is non-nil if Select failed (e.g. V4+ cert error) but info is available.
-func doKeycardSelect(kc *keycard.CommandSet) (*types.ApplicationInfo, error) {
-	if err := kc.Select(); err != nil {
-		return kc.AppInfo(), err
-	}
-	return kc.AppInfo(), nil
-}
-
 // doKeycardInit initializes the card. Handles V1 vs V2 automatically.
 func doKeycardInit(kc *keycard.CommandSet, pin, puk, pairingPass, altPin string, pinRetries, pukRetries uint8) error {
 	if internal.IsSecureChannelV2(kc) {
@@ -637,11 +611,9 @@ func doKeycardGetStatusResult(kc *keycard.CommandSet) (AppStatusResult, error) {
 	return result, nil
 }
 
-// doKeycardInfo builds comprehensive card info.
-// selectErr is the error from kc.Select() if any (for V4+ cert verification display).
-func doKeycardInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selectErr error) (*KeycardInfoResult, error) {
+// doKeycardInfoKeycard builds keycard applet info only.
+func doKeycardInfoKeycard(kc *keycard.CommandSet, selectErr error) (*KeycardInfoResult, error) {
 	info := kc.AppInfo()
-	cashInfo := cashKC.CashApplicationInfo
 
 	appVersion := uint16(0)
 	if info != nil && info.Installed {
@@ -702,6 +674,15 @@ func doKeycardInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selec
 		}
 	}
 
+	return result, nil
+}
+
+// doKeycardInfoCash builds cash applet info only.
+func doKeycardInfoCash(cashKC *keycard.CashCommandSet) (*CashInfoResult, error) {
+	cashInfo := cashKC.CashApplicationInfo
+
+	result := &CashInfoResult{}
+
 	if cashInfo != nil && cashInfo.Installed {
 		result.Cash.Installed = true
 		result.Cash.PublicKey = "0x" + hex.EncodeToString(cashInfo.PublicKey)
@@ -715,6 +696,8 @@ func doKeycardInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selec
 
 	return result, nil
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Pairing core functions
@@ -910,14 +893,6 @@ func doKeycardIdentify(kc *keycard.CommandSet, expectedPubKey []byte) ([]byte, e
 // ---------------------------------------------------------------------------
 // Cash core functions
 // ---------------------------------------------------------------------------
-
-// doCashSelect selects the Cash applet and returns its info.
-func doCashSelect(cashKC *keycard.CashCommandSet) (*types.CashApplicationInfo, error) {
-	if err := cashKC.Select(); err != nil {
-		return nil, err
-	}
-	return cashKC.CashApplicationInfo, nil
-}
 
 // doCashSign signs data with the Cash applet.
 func doCashSign(cashKC *keycard.CashCommandSet, data []byte) (*types.Signature, error) {

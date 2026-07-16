@@ -155,16 +155,7 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	cashKC := keycard.NewCashCommandSet(ch)
-	if err := cashKC.Select(); err != nil {
-		if e, ok := err.(*apdu.ErrBadResponse); ok && e.Sw == globalplatform.SwFileNotFound {
-			// Cash not installed
-		} else {
-			return err
-		}
-	}
-
-	result, err := doKeycardInfo(kc, cashKC, selectErr)
+	result, err := doKeycardInfoKeycard(kc, selectErr)
 	if err != nil {
 		return err
 	}

@@ -108,7 +108,7 @@ func main() {
 			cmds = append(cmds, cmd.PinlessCommands()...)
 			cmds = append(cmds, cmd.MetadataCommands()...)
 			cmds = append(cmds, cmd.IdentifyCommand())
-			cmds = append(cmds, cmd.CashCommand())
+			cmds = append(cmds, cmd.CashCommands()...)
 			cmds = append(cmds, cmd.IdentCommands()...)
 			cmds = append(cmds, cmd.ShellCommand())
 			return cmds

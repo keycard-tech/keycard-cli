@@ -36,7 +36,6 @@ func RegisterShellCommands() []shellCommand {
 
 		// Keycard lifecycle
 		{name: "keycard-select", usage: "Select the Keycard applet", handler: shellKeycardSelect},
-		{name: "keycard-info", usage: "Show card information", handler: shellKeycardInfo},
 		{name: "keycard-init", usage: "Initialize the card", handler: shellKeycardInit},
 		{name: "keycard-factory-reset", usage: "Factory reset the card", handler: shellKeycardFactoryReset},
 		{name: "keycard-get-status", usage: "Get card status", handler: shellKeycardGetStatus},
@@ -111,15 +110,16 @@ func RegisterShellCommands() []shellCommand {
 // ---------------------------------------------------------------------------
 
 func shellCashSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	info, err := doCashSelect(ctx.cashKC)
+	if err := ctx.cashKC.Select(); err != nil {
+		if e, ok := err.(*apdu.ErrBadResponse); !(ok && e.Sw == globalplatform.SwFileNotFound) {
+			return nil, err
+		}
+	}
+	result, err := doKeycardInfoCash(ctx.cashKC)
 	if err != nil {
 		return nil, err
 	}
-	return newShellOutput(CashSelectResult{
-		Installed: info.Installed,
-		PublicKey: "0x" + hex.EncodeToString(info.PublicKey),
-		Version:   "0x" + hex.EncodeToString(info.Version),
-	}, ctx.showSecrets), nil
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -254,19 +254,6 @@ func shellGPGetStatus(ctx *shellCtx, _ []string) (*shellOutput, error) {
 // ---------------------------------------------------------------------------
 
 func shellKeycardSelect(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	info, err := doKeycardSelect(ctx.kc)
-	if err != nil {
-		// Still show info even if select errored (V4+ cert issues)
-	}
-	return newShellOutput(KeycardSelectResult{
-		Installed:   info.Installed,
-		Initialized: info.Initialized,
-		KeyUID:      "0x" + hex.EncodeToString(info.KeyUID),
-		AppVersion:  fmt.Sprintf("0x%04x", info.AppVersion()),
-	}, ctx.showSecrets), err
-}
-
-func shellKeycardInfo(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	// Re-select to get fresh info
 	var selectErr error
 	if selectErr = ctx.kc.Select(); selectErr != nil {
@@ -277,18 +264,10 @@ func shellKeycardInfo(ctx *shellCtx, _ []string) (*shellOutput, error) {
 		}
 	}
 
-	cashKC := keycard.NewCashCommandSet(ctx.ch)
-	if err := cashKC.Select(); err != nil {
-		if e, ok := err.(*apdu.ErrBadResponse); !(ok && e.Sw == globalplatform.SwFileNotFound) {
-			return nil, err
-		}
-	}
-
-	result, err := doKeycardInfo(ctx.kc, cashKC, selectErr)
+	result, err := doKeycardInfoKeycard(ctx.kc, selectErr)
 	if err != nil {
 		return nil, err
 	}
-
 	return newShellOutput(result, ctx.showSecrets), nil
 }
 
