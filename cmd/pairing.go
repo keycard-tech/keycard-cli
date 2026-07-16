@@ -15,7 +15,7 @@ func PairingCommands() []*cli.Command {
 	return []*cli.Command{
 		{
 			Name:  "pair",
-			Usage: "Pair with the card (V1 only)",
+			Usage: "Pair with the card (applet < 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:  "pairing-password",
@@ -26,7 +26,7 @@ func PairingCommands() []*cli.Command {
 		},
 		{
 			Name:  "unpair",
-			Usage: "Unpair from the card (V1 only)",
+			Usage: "Unpair from the card (applet < 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.IntFlag{
 					Name:     "index",
@@ -42,13 +42,8 @@ func PairingCommands() []*cli.Command {
 		},
 		{
 			Name:   "unpair-all",
-			Usage:  "Unpair all pairings (V1 only)",
+			Usage:  "Unpair all pairings (applet < 4.0 only)",
 			Action: cmdUnpairOthers,
-		},
-		{
-			Name:   "secure-channel-version",
-			Usage:  "Show the secure channel version (V1 or V2)",
-			Action: cmdSecureChannelVersion,
 		},
 	}
 }
@@ -99,16 +94,5 @@ func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		return PrintResultCLI(cmd, ActionResult{Message: "All other pairings removed"})
-	})
-}
-
-func cmdSecureChannelVersion(ctx context.Context, cmd *cli.Command) error {
-	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		version, err := doKeycardSecureChannelVersion(kc)
-		if err != nil {
-			return err
-		}
-
-		return PrintResultCLI(cmd, SecureChannelVersionResult{Version: version})
 	})
 }

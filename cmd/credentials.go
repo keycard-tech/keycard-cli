@@ -62,7 +62,7 @@ func CredentialsCommands() []*cli.Command {
 		},
 		{
 			Name:  "change-pairing-password",
-			Usage: "Change the pairing password (V1 only)",
+			Usage: "Change the pairing password (applet < 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "new",

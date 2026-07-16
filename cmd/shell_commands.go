@@ -46,30 +46,29 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-set-pairing", usage: "Set session pairing info", handler: shellKeycardSetPairing},
 
 		// Pairing
-		{name: "keycard-pair", usage: "Pair with the card (V1 only)", handler: shellKeycardPair},
-		{name: "keycard-unpair", usage: "Unpair from the card (V1 only)", handler: shellKeycardUnpair},
-		{name: "keycard-unpair-others", usage: "Unpair all other pairings (V1 only)", handler: shellKeycardUnpairOthers},
+		{name: "keycard-pair", usage: "Pair with the card (applet < 4.0 only)", handler: shellKeycardPair},
+		{name: "keycard-unpair", usage: "Unpair from the card (applet < 4.0 only)", handler: shellKeycardUnpair},
+		{name: "keycard-unpair-others", usage: "Unpair all other pairings (applet < 4.0 only)", handler: shellKeycardUnpairOthers},
 		{name: "keycard-open-secure-channel", usage: "Open secure channel", handler: shellKeycardOpenSecureChannel},
-		{name: "keycard-secure-channel-version", usage: "Show secure channel version", handler: shellKeycardSecureChannelVersion},
 
 		// Credentials
 		{name: "keycard-verify-pin", usage: "Verify the PIN", handler: shellKeycardVerifyPIN},
 		{name: "keycard-change-pin", usage: "Change the PIN", handler: shellKeycardChangePIN},
 		{name: "keycard-change-puk", usage: "Change the PUK", handler: shellKeycardChangePUK},
 		{name: "keycard-unblock-pin", usage: "Unblock the PIN using the PUK", handler: shellKeycardUnblockPin},
-		{name: "keycard-change-pairing-secret", usage: "Change the pairing secret (V1 only)", handler: shellKeycardChangePairingSecret},
+		{name: "keycard-change-pairing-secret", usage: "Change the pairing secret (applet < 4.0 only)", handler: shellKeycardChangePairingSecret},
 
 		// Key management
 		{name: "keycard-generate-key", usage: "Generate a new key on the card", handler: shellKeycardGenerateKey},
 		{name: "keycard-remove-key", usage: "Remove the current key", handler: shellKeycardRemoveKey},
-		{name: "keycard-derive-key", usage: "Derive a key at the given path", handler: shellKeycardDeriveKey},
+		{name: "keycard-derive-key", usage: "Derive a key at the given path (applet < 4.0 only)", handler: shellKeycardDeriveKey},
 		{name: "keycard-load-seed", usage: "Load a seed onto the card (mnemonic phrase or hex)", handler: shellKeycardLoadSeed},
-		{name: "keycard-load-lee-key", usage: "Load a LEE key onto the card", handler: shellKeycardLoadLEEKey},
+		{name: "keycard-load-lee-key", usage: "Load a LEE key onto the card (applet >= 4.0 only)", handler: shellKeycardLoadLEEKey},
 		{name: "keycard-export-key-public", usage: "Export the public key", handler: shellKeycardExportKeyPublic},
 		{name: "keycard-export-key-private", usage: "Export the private key", handler: shellKeycardExportKeyPrivate},
 		{name: "keycard-export-extended-key", usage: "Export the extended key (public key + chain code)", handler: shellKeycardExportExtendedKey},
-		{name: "keycard-export-lee-key", usage: "Export a LEE key at the given path", handler: shellKeycardExportLEEKey},
-		{name: "keycard-export-bip85", usage: "Export a BIP85 derived key", handler: shellKeycardExportBIP85},
+		{name: "keycard-export-lee-key", usage: "Export a LEE key at the given path (applet >= 4.0 only)", handler: shellKeycardExportLEEKey},
+		{name: "keycard-export-bip85", usage: "Export a BIP85 derived key (applet >= 4.0 only)", handler: shellKeycardExportBIP85},
 
 		// Signing
 		{name: "keycard-sign", usage: "Sign a 32-byte hash (optional derivation path)", handler: shellKeycardSign},
@@ -79,8 +78,8 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-sign-message-pinless", usage: "Sign a message without PIN (applet < 4.0 only)", handler: shellKeycardSignMessagePinless},
 
 		// Pinless path
-		{name: "keycard-set-pinless-path", usage: "Set the pinless signing path", handler: shellKeycardSetPinlessPath},
-		{name: "keycard-reset-pinless-path", usage: "Reset the pinless signing path", handler: shellKeycardResetPinlessPath},
+		{name: "keycard-set-pinless-path", usage: "Set the pinless signing path (applet < 4.0 only)", handler: shellKeycardSetPinlessPath},
+		{name: "keycard-reset-pinless-path", usage: "Reset the pinless signing path (applet < 4.0 only)", handler: shellKeycardResetPinlessPath},
 
 		// Mnemonic
 		{name: "keycard-generate-mnemonic", usage: "Generate mnemonic indexes", handler: shellKeycardGenerateMnemonic},
@@ -88,7 +87,7 @@ func RegisterShellCommands() []shellCommand {
 		// Data management
 		{name: "keycard-get-data", usage: "Get data from the card (public, ndef, cash)", handler: shellKeycardGetData},
 		{name: "keycard-store-data", usage: "Store data on the card (public, ndef, cash)", handler: shellKeycardStoreData},
-		{name: "keycard-get-challenge", usage: "Get a random challenge from the card", handler: shellKeycardGetChallenge},
+		{name: "keycard-get-challenge", usage: "Get a random challenge from the card (applet >= 4.0 only)", handler: shellKeycardGetChallenge},
 		{name: "keycard-set-ndef", usage: "Set the NDEF record on the card", handler: shellKeycardSetNDEF},
 
 		// Metadata
@@ -96,7 +95,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-set-name", usage: "Set the card's display name", handler: shellKeycardSetName},
 
 		// Identify
-		{name: "keycard-identify", usage: "Identify the card (V1 only)", handler: shellKeycardIdentify},
+		{name: "keycard-identify", usage: "Identify the card (applet < 4.0 only)", handler: shellKeycardIdentify},
 
 		// Cash
 		{name: "cash-sign", usage: "Sign with the Cash applet", handler: shellCashSign},
@@ -450,14 +449,6 @@ func shellKeycardOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, err
 	return newShellOutput(ActionResult{Message: "Secure channel opened"}), nil
 }
 
-func shellKeycardSecureChannelVersion(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	version, err := doKeycardSecureChannelVersion(ctx.kc)
-	if err != nil {
-		return nil, err
-	}
-	return newShellOutput(SecureChannelVersionResult{Version: version}), nil
-}
-
 // ---------------------------------------------------------------------------
 // Credentials shell commands
 // ---------------------------------------------------------------------------
@@ -503,6 +494,9 @@ func shellKeycardUnblockPin(ctx *shellCtx, args []string) (*shellOutput, error) 
 }
 
 func shellKeycardChangePairingSecret(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("change-pairing-secret is not available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -534,6 +528,9 @@ func shellKeycardRemoveKey(ctx *shellCtx, _ []string) (*shellOutput, error) {
 }
 
 func shellKeycardDeriveKey(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("derive-key is not available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -573,6 +570,9 @@ func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
 }
 
 func shellKeycardLoadLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if !internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("load-lee-key is only available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -623,6 +623,9 @@ func shellKeycardExportExtendedKey(ctx *shellCtx, args []string) (*shellOutput, 
 }
 
 func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if !internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("export-lee-key is only available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -637,6 +640,9 @@ func shellKeycardExportLEEKey(ctx *shellCtx, args []string) (*shellOutput, error
 }
 
 func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if !internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("export-bip85 is only available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 2); err != nil {
 		return nil, err
 	}
@@ -829,6 +835,9 @@ func shellKeycardStoreData(ctx *shellCtx, args []string) (*shellOutput, error) {
 }
 
 func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if !internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("get-challenge is only available on applet version 4.0+")
+	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
@@ -886,6 +895,9 @@ func shellKeycardSetName(ctx *shellCtx, args []string) (*shellOutput, error) {
 // ---------------------------------------------------------------------------
 
 func shellKeycardIdentify(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("identify is not available on applet version 4.0+")
+	}
 	var expectedPubKey []byte
 	if len(args) == 1 {
 		var err error

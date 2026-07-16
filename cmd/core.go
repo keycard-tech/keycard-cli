@@ -688,21 +688,12 @@ func doKeycardInfo(kc *keycard.CommandSet, cashKC *keycard.CashCommandSet, selec
 // Pairing core functions
 // ---------------------------------------------------------------------------
 
-// doKeycardPair pairs with the card using the given pairing password (V1 only).
+// doKeycardPair pairs with the card using the given pairing password (applet < 4.0 only).
 func doKeycardPair(kc *keycard.CommandSet, pairingPass string) (*types.Pairing, error) {
 	if err := kc.Pair(pairingPass); err != nil {
 		return nil, err
 	}
 	return kc.Pairing(), nil
-}
-
-// doKeycardSecureChannelVersion returns the secure channel version string.
-func doKeycardSecureChannelVersion(kc *keycard.CommandSet) (string, error) {
-	ver, ok := kc.SecureChannelVersion()
-	if !ok {
-		return "", errors.New("could not determine secure channel version")
-	}
-	return fmt.Sprintf("v%d", ver+1), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -871,7 +862,7 @@ func doKeycardSetName(kc *keycard.CommandSet, name string) error {
 // Identify core function
 // ---------------------------------------------------------------------------
 
-// doKeycardIdentify performs card identification (V1 only).
+// doKeycardIdentify performs card identification (applet < 4.0 only).
 // If expectedPubKey is non-nil, verifies the returned key matches.
 func doKeycardIdentify(kc *keycard.CommandSet, expectedPubKey []byte) ([]byte, error) {
 	pubkey, err := kc.Identify()

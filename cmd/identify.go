@@ -11,11 +11,11 @@ import (
 	"github.com/status-im/keycard-cli/internal"
 )
 
-// IdentifyCommand returns the identify command (V1 only).
+// IdentifyCommand returns the identify command (applet < 4.0 only).
 func IdentifyCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "identify",
-		Usage: "Identify the card (V1 only, verifies card genuinity)",
+		Usage: "Identify the card (applet < 4.0 only)",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "public-key",
@@ -31,7 +31,7 @@ func cmdIdentify(ctx context.Context, cmd *cli.Command) error {
 
 	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("identify is not supported on Secure Channel V2 cards")
+			return fmt.Errorf("identify is not supported on Secure Channel V2")
 		}
 
 		var expectedKey []byte

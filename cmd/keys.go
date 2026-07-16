@@ -27,7 +27,7 @@ func KeyCommands() []*cli.Command {
 		},
 		{
 			Name:  "derive-key",
-			Usage: "Derive a key at the given path",
+			Usage: "Derive a key at the given path (applet < 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "path",
@@ -54,7 +54,7 @@ func KeyCommands() []*cli.Command {
 		},
 		{
 			Name:  "load-lee-key",
-			Usage: "Load a LEE key onto the card",
+			Usage: "Load a LEE key onto the card (applet >= 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "hex",
@@ -111,7 +111,7 @@ func KeyCommands() []*cli.Command {
 		},
 		{
 			Name:  "export-lee-key",
-			Usage: "Export a LEE key at the given path",
+			Usage: "Export a LEE key at the given path (applet >= 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "path",
@@ -123,7 +123,7 @@ func KeyCommands() []*cli.Command {
 		},
 		{
 			Name:  "export-bip85",
-			Usage: "Export a BIP85 derived key",
+			Usage: "Export a BIP85 derived key (applet >= 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "path",
@@ -164,6 +164,9 @@ func cmdRemoveKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdDeriveKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("derive-key is not available on applet version 4.0+")
+		}
 		path := cmd.String("path")
 		if err := kc.DeriveKey(path); err != nil {
 			return err
@@ -215,6 +218,9 @@ func cmdLoadLEEKey(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if !internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("load-lee-key is only available on applet version 4.0+")
+		}
 		if err := kc.LoadLEEKey(key); err != nil {
 			return err
 		}
@@ -257,6 +263,9 @@ func cmdExportExtendedKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if !internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("export-lee-key is only available on applet version 4.0+")
+		}
 		path := cmd.String("path")
 		key, err := kc.ExportLEEKey(path)
 		if err != nil {
@@ -274,6 +283,9 @@ func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 	length := uint8(cmd.Int("length"))
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if !internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("export-bip85 is only available on applet version 4.0+")
+		}
 		key, err := kc.ExportBIP85(path, length)
 		if err != nil {
 			return err
