@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	keycard "github.com/status-im/keycard-go"
-	"github.com/status-im/keycard-go/types"
+	keycard "github.com/keycard-tech/keycard-go/v4"
+	"github.com/keycard-tech/keycard-go/v4/types"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // SigningCommands returns the signing command group.

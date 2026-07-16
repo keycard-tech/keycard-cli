@@ -1,6 +1,6 @@
 # keycard-cli
 
-`keycard` is a command line tool to manage [Status Keycards](https://github.com/status-im/status-keycard).
+`keycard` is a command line tool to manage [Status Keycards](https://github.com/keycard-tech/status-keycard).
 
 * [Dependencies](#dependencies)
 * [Installation](#installation)
@@ -19,7 +19,7 @@
 
 ## Installation
 
-Download the binary for your platform from the [releases page](https://github.com/status-im/keycard-cli/releases) and rename the file to `keycard`, removing the platform specific suffix.
+Download the binary for your platform from the [releases page](https://github.com/keycard-tech/keycard-cli/releases) and rename the file to `keycard`, removing the platform specific suffix.
 
 ## Continuous Integration
 
@@ -52,7 +52,7 @@ KeyUID: 0x
 ### Keycard applet installation
 
 The `install` command will install an applet to the card.
-You can download the status `cap` file from the [status-im/status-keycard releases page](https://github.com/status-im/status-keycard/releases).
+You can download the status `cap` file from the [keycard-tech/status-keycard releases page](https://github.com/keycard-tech/status-keycard/releases).
 
 ```bash
 keycard install -l debug -a PATH_TO_CAP_FILE

@@ -1,4 +1,4 @@
-module github.com/status-im/keycard-cli
+module github.com/keycard-tech/keycard-cli
 
 go 1.25.0
 
@@ -7,7 +7,7 @@ require (
 	github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25
 	github.com/ethereum/go-ethereum v1.17.4
 	github.com/hsanjuan/go-ndef v0.0.1
-	github.com/status-im/keycard-go v0.3.4-0.20260716083027-82bb9e8f7328
+	github.com/keycard-tech/keycard-go/v4 v4.0.0
 	github.com/urfave/cli/v3 v3.10.1
 )
 

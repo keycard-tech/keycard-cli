@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	keycard "github.com/status-im/keycard-go"
+	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // PairingCommands returns the pairing command group.

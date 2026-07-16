@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	keycard "github.com/status-im/keycard-go"
+	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // DataCommands returns the data management command group.

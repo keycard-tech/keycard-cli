@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	keycard "github.com/status-im/keycard-go"
-	"github.com/status-im/keycard-go/globalplatform"
-	keycardio "github.com/status-im/keycard-go/io"
-	"github.com/status-im/keycard-go/types"
+	keycard "github.com/keycard-tech/keycard-go/v4"
+	"github.com/keycard-tech/keycard-go/v4/globalplatform"
+	keycardio "github.com/keycard-tech/keycard-go/v4/io"
+	"github.com/keycard-tech/keycard-go/v4/types"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // AuthLevel controls how far the authentication pipeline proceeds.

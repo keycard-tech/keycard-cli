@@ -8,12 +8,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	keycard "github.com/status-im/keycard-go"
-	"github.com/status-im/keycard-go/apdu"
-	"github.com/status-im/keycard-go/globalplatform"
-	"github.com/status-im/keycard-go/identifiers"
-	keycardio "github.com/status-im/keycard-go/io"
-	"github.com/status-im/keycard-go/types"
+	keycard "github.com/keycard-tech/keycard-go/v4"
+	"github.com/keycard-tech/keycard-go/v4/apdu"
+	"github.com/keycard-tech/keycard-go/v4/globalplatform"
+	"github.com/keycard-tech/keycard-go/v4/identifiers"
+	keycardio "github.com/keycard-tech/keycard-go/v4/io"
+	"github.com/keycard-tech/keycard-go/v4/types"
 )
 
 var installerLogger = log.New("package", "installer")

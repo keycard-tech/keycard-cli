@@ -3,7 +3,7 @@ GIT_ROOT = $(shell git rev-parse --show-toplevel)
 
 GO_VERSION ?= 1.18.1
 IMAGE_TAG  ?= xgo-$(GO_VERSION)
-IMAGE_NAME ?= statusteam/keycard-cli-ci:$(IMAGE_TAG)
+IMAGE_NAME ?= keycard-tech/keycard-cli-ci:$(IMAGE_TAG)
 
 build:
 	docker build \

@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/cmd"
+	"github.com/keycard-tech/keycard-cli/cmd"
 )
 
 var version string = "dev"

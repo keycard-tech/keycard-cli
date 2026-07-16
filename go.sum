@@ -14,10 +14,10 @@ github.com/holiman/uint256 v1.3.2 h1:a9EgMPSC1AAaj1SZL5zIQD3WbwTuHrMGOerLjGmM/TA
 github.com/holiman/uint256 v1.3.2/go.mod h1:EOMSn4q6Nyt9P6efbI3bueV4e1b3dGlUCXeiRV4ng7E=
 github.com/hsanjuan/go-ndef v0.0.1 h1:un1E9jEVa0t8j33qT2JFfseOAI3MikbrkmMEn9Lx0Wk=
 github.com/hsanjuan/go-ndef v0.0.1/go.mod h1:LqYM55xXg5wubrxucAxkuK8nW+wjFCCZNyfsd9lPR+Q=
+github.com/keycard-tech/keycard-go/v4 v4.0.0 h1:ok/4lY/z2VafdiVHgMTNhponJSBV80w/SoWOXWmAyVc=
+github.com/keycard-tech/keycard-go/v4 v4.0.0/go.mod h1:0fisqp06Z15sbCwG67L+YuzeY8+JLQ9vpLEESh4yYIQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/status-im/keycard-go v0.3.4-0.20260716083027-82bb9e8f7328 h1:iJzZ3gGGR85tslrx8Ma0AV9/F2FNdKHes6PdK/fwwPE=
-github.com/status-im/keycard-go v0.3.4-0.20260716083027-82bb9e8f7328/go.mod h1:Cy0G+e9n1X9+p9iZktAV7WZP2fBm00uGNUTPei07n50=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/urfave/cli/v3 v3.10.1 h1:7Kx9H50hrHbRbyxgO1KP6/BcbiGRz0uYh5YyQ30JEEY=

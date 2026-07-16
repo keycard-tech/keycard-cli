@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	keycard "github.com/status-im/keycard-go"
-	"github.com/status-im/keycard-go/apdu"
-	"github.com/status-im/keycard-go/globalplatform"
-	"github.com/status-im/keycard-go/types"
+	keycard "github.com/keycard-tech/keycard-go/v4"
+	"github.com/keycard-tech/keycard-go/v4/apdu"
+	"github.com/keycard-tech/keycard-go/v4/globalplatform"
+	"github.com/keycard-tech/keycard-go/v4/types"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // RegisterShellCommands returns the full list of shell commands.

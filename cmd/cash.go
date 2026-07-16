@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	keycard "github.com/status-im/keycard-go"
-	"github.com/status-im/keycard-go/apdu"
-	"github.com/status-im/keycard-go/globalplatform"
-	keycardio "github.com/status-im/keycard-go/io"
+	keycard "github.com/keycard-tech/keycard-go/v4"
+	"github.com/keycard-tech/keycard-go/v4/apdu"
+	"github.com/keycard-tech/keycard-go/v4/globalplatform"
+	keycardio "github.com/keycard-tech/keycard-go/v4/io"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // CashCommands returns the cash applet command group.

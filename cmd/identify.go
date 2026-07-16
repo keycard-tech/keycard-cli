@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	keycard "github.com/status-im/keycard-go"
+	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/urfave/cli/v3"
 
-	"github.com/status-im/keycard-cli/internal"
+	"github.com/keycard-tech/keycard-cli/internal"
 )
 
 // IdentifyCommand returns the identify command (applet < 4.0 only).

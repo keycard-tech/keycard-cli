@@ -2,7 +2,7 @@ package internal
 
 import (
 	"github.com/ethereum/go-ethereum/log"
-	keycard "github.com/status-im/keycard-go"
+	keycard "github.com/keycard-tech/keycard-go/v4"
 )
 
 // SecureChannelVersion returns the secure channel version, or false if unknown.
