@@ -9,11 +9,11 @@ BIN_NAME=keycard
 
 VERSION = $(shell cat VERSION)
 
-export GITHUB_USER ?= status-im
+export GITHUB_USER ?= keycard-tech
 export GITHUB_REPO ?= $(PROJECT_NAME)
 
 export IMAGE_TAG   ?= xgo-1.18.1
-export IMAGE_NAME  ?= statusteam/keycard-cli-ci:$(IMAGE_TAG)
+export IMAGE_NAME  ?= keycard-tech/keycard-cli-ci:$(IMAGE_TAG)
 
 export GO_PROJECT_PATH ?= github.com/$(GITHUB_USER)/$(GITHUB_REPO)
 
