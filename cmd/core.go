@@ -389,14 +389,11 @@ func (r ExportedKeyResult) Format(_ bool) string {
 
 // SignatureResult holds signature data.
 type SignatureResult struct {
-	R            string `json:"signature_r"`
-	S            string `json:"signature_s"`
-	V            int    `json:"signature_v"`
-	ETHSignature string `json:"eth_signature"`
-	PublicKey    string `json:"public_key"`
-	Address      string `json:"address"`
-	Path         string `json:"path,omitempty"`
-	File         string `json:"file,omitempty"`
+	R      string `json:"signature_r"`
+	S      string `json:"signature_s"`
+	V      int    `json:"signature_v"`
+	Path   string `json:"path,omitempty"`
+	File   string `json:"file,omitempty"`
 }
 
 func (r SignatureResult) Format(_ bool) string {
@@ -404,10 +401,11 @@ func (r SignatureResult) Format(_ bool) string {
 	w.WriteString(fmt.Sprintf("Signature R: %s\n", r.R))
 	w.WriteString(fmt.Sprintf("Signature S: %s\n", r.S))
 	w.WriteString(fmt.Sprintf("Signature V: %d\n", r.V))
-	w.WriteString(fmt.Sprintf("ETH Signature: %s\n", r.ETHSignature))
-	w.WriteString(fmt.Sprintf("Public key: %s\n", r.PublicKey))
-	if r.Address != "" {
-		w.WriteString(fmt.Sprintf("Address: %s\n", r.Address))
+	if r.Path != "" {
+		w.WriteString(fmt.Sprintf("Path: %s\n", r.Path))
+	}
+	if r.File != "" {
+		w.WriteString(fmt.Sprintf("File: %s\n", r.File))
 	}
 	return w.String()
 }
@@ -483,20 +481,10 @@ func (r LoadIdentResult) Format(_ bool) string {
 // ---------------------------------------------------------------------------
 
 func newSignatureResult(sig *types.Signature) SignatureResult {
-	ethSig := append(sig.R(), sig.S()...)
-	ethSig = append(ethSig, sig.V()+27)
-	pubKey := sig.PubKey()
-	ethAddr := ""
-	if pubkey, err := crypto.UnmarshalPubkey(pubKey); err == nil {
-		ethAddr = crypto.PubkeyToAddress(*pubkey).Hex()
-	}
 	return SignatureResult{
-		R:            "0x" + hex.EncodeToString(sig.R()),
-		S:            "0x" + hex.EncodeToString(sig.S()),
-		V:            int(sig.V()),
-		ETHSignature: "0x" + hex.EncodeToString(ethSig),
-		PublicKey:    "0x" + hex.EncodeToString(pubKey),
-		Address:      ethAddr,
+		R: "0x" + hex.EncodeToString(sig.R()),
+		S: "0x" + hex.EncodeToString(sig.S()),
+		V: int(sig.V()),
 	}
 }
 

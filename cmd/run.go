@@ -142,6 +142,7 @@ const testCardCA = "025877220AAAE6E54A6F974602D5995C0FE24A3EA7DDABD8644BEC795B9D
 
 // newCommandSet creates a keycard.CommandSet, optionally using a custom CA
 // public key and/or whitelisted card identity key from CLI flags.
+// Priority: CLI flags > environment variables.
 func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	cardCA := cmd.String("card-ca")
 	whitelistCard := cmd.String("whitelist-card")
@@ -149,6 +150,24 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	// --test-card is a shortcut for --card-ca with the test CA public key
 	if cmd.Bool("test-card") && cardCA == "" {
 		cardCA = testCardCA
+	}
+
+	// Fallback to environment variables
+	if cardCA == "" {
+		if v := os.Getenv("KEYCARD_CARD_CA"); v != "" {
+			cardCA = v
+		}
+	}
+	if whitelistCard == "" {
+		if v := os.Getenv("KEYCARD_WHITELIST_CARD"); v != "" {
+			whitelistCard = v
+		}
+	}
+	// KEYCARD_TEST_CARD env var acts like --test-card flag
+	if cardCA == "" {
+		if v := os.Getenv("KEYCARD_TEST_CARD"); v != "" && v != "0" && v != "false" {
+			cardCA = testCardCA
+		}
 	}
 
 	if cardCA == "" && whitelistCard == "" {

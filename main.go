@@ -59,15 +59,15 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "pin",
-				Usage: "PIN (or KEYCARD_PIN env var)",
+				Usage: "PIN (Also as KEYCARD_PIN env var)",
 			},
 			&cli.StringFlag{
 				Name:  "puk",
-				Usage: "PUK (or KEYCARD_PUK env var)",
+				Usage: "PUK (Also as KEYCARD_PUK env var)",
 			},
 			&cli.StringFlag{
 				Name:  "pairing-password",
-				Usage: "Pairing password (or KEYCARD_PAIRING_PASSWORD env var)",
+				Usage: "Pairing password (Also as KEYCARD_PAIRING_PASSWORD env var)",
 			},
 			&cli.BoolFlag{
 				Name:    "json",
@@ -85,15 +85,15 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "card-ca",
-				Usage: "CA public key for V2 certificate verification (hex, 33 bytes compressed)",
+				Usage: "CA public key for V2 certificate verification (hex, 33 bytes compressed. Also as KEYCARD_CARD_CA env var)",
 			},
 			&cli.BoolFlag{
 				Name:  "test-card",
-				Usage: "Use test card CA (shortcut for --card-ca with test CA public key)",
+				Usage: "Use test card CA (shortcut for --card-ca with test CA public key. Also as KEYCARD_TEST_CARD env var)",
 			},
 			&cli.StringFlag{
 				Name:  "whitelist-card",
-				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed)",
+				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed. Also as KEYCARD_WHITELIST_CARD env var)",
 			},
 			&cli.BoolFlag{
 				Name:  "show-secrets",
