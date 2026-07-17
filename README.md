@@ -182,6 +182,20 @@ Generate a new random key on the card.
 keycard generate-key --pin YOUR_PIN
 ```
 
+#### `generate-mnemonic`
+
+Generate a BIP39 mnemonic phrase using the card's secure RNG. The phrase is returned but not loaded by default. Use `--save` to also load the mnemonic's seed onto the card.
+
+```bash
+keycard generate-mnemonic --words 12                           # Generate only (no PIN needed)
+keycard generate-mnemonic --words 24 --save --pin YOUR_PIN     # Generate and load onto card
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--words <n>` | `12` | Number of words: 12, 15, 18, 21, or 24 |
+| `--save` | | Also load the mnemonic's binary seed onto the card (requires PIN) |
+
 #### `remove-key`
 
 Remove the current key from the card.
@@ -201,7 +215,7 @@ keycard load-seed --hex "0x..." --pin YOUR_PIN
 
 #### `load-lee-seed`
 
-Load a LEE (Lightweight Ethereum Extension) seed onto the card (applet >= 4.0 only).
+Load a seed for usage with the LEE (Logos Execution Environment) onto the card (applet >= 4.0 only).
 
 ```bash
 keycard load-lee-seed --mnemonic "word1 word2 ... word12" --pin YOUR_PIN
@@ -217,10 +231,10 @@ keycard export-public-key --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
 
 #### `export-private-key`
 
-Export the private key.
+Export the private key. Only works for paths in the EIP-1581 tree.
 
 ```bash
-keycard export-private-key --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
+keycard export-private-key --path "m/43'/60'/1581'/4'/1469833213'/1555737549" --pin YOUR_PIN
 ```
 
 #### `export-extended-key`

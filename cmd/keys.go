@@ -16,6 +16,22 @@ import (
 func KeyCommands() []*cli.Command {
 	return []*cli.Command{
 		{
+			Name:  "generate-mnemonic",
+			Usage: "Generate a mnemonic phrase using the card's RNG",
+			Flags: []cli.Flag{
+				&cli.IntFlag{
+					Name:  "words",
+					Usage: "Number of words (12, 15, 18, 21, or 24)",
+					Value: 12,
+				},
+				&cli.BoolFlag{
+					Name:  "save",
+					Usage: "Also load the mnemonic's seed onto the card",
+				},
+			},
+			Action: cmdGenerateMnemonic,
+		},
+		{
 			Name:   "generate-key",
 			Usage:  "Generate a new key on the card",
 			Action: cmdGenerateKey,
@@ -142,6 +158,32 @@ func KeyCommands() []*cli.Command {
 			Action: cmdExportBIP85,
 		},
 	}
+}
+
+func cmdGenerateMnemonic(ctx context.Context, cmd *cli.Command) error {
+	words := cmd.Int("words")
+	checksumSize := words / 3
+	save := cmd.Bool("save")
+
+	level := AuthSecureChannel
+	if save {
+		level = AuthPIN
+	}
+
+	return runCard(cmd, level, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		mnemonic, keyID, err := doKeycardGenerateMnemonic(kc, checksumSize, save)
+		if err != nil {
+			return err
+		}
+		result := GenerateMnemonicResult{
+			Phrase: mnemonic.ToPhrase(),
+			Words:  words,
+		}
+		if keyID != nil {
+			result.KeyID = "0x" + hex.EncodeToString(keyID)
+		}
+		return PrintResultCLI(cmd, result)
+	})
 }
 
 func cmdGenerateKey(ctx context.Context, cmd *cli.Command) error {

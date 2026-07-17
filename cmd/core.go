@@ -458,13 +458,19 @@ func (r SecureChannelVersionResult) Format(_ bool) string {
 	return fmt.Sprintf("Secure channel version: %s\n", r.Version)
 }
 
-// MnemonicResult holds generated mnemonic indexes.
-type MnemonicResult struct {
-	Indexes []int `json:"mnemonic_indexes"`
+// GenerateMnemonicResult holds the result of generating a mnemonic phrase.
+type GenerateMnemonicResult struct {
+	Phrase string `json:"phrase"`
+	Words  int    `json:"words"`
+	KeyID  string `json:"key_id,omitempty"` // set when mnemonic is also loaded onto the card
 }
 
-func (r MnemonicResult) Format(_ bool) string {
-	return fmt.Sprintf("Mnemonic indexes: %v\n", r.Indexes)
+func (r GenerateMnemonicResult) Format(showSecrets bool) string {
+	line := fmt.Sprintf("Mnemonic (%d words): %s\n", r.Words, r.Phrase)
+	if r.KeyID != "" {
+		line += fmt.Sprintf("Key ID: %s\n", r.KeyID)
+	}
+	return line
 }
 
 // LoadIdentResult holds the result of loading an identity certificate.
@@ -713,6 +719,34 @@ func doKeycardGenerateKey(kc *keycard.CommandSet) ([]byte, error) {
 		return nil, errors.New("key already generated. Remove it first with 'remove-key'")
 	}
 	return kc.GenerateKey()
+}
+
+// doKeycardGenerateMnemonic generates a mnemonic phrase using the card's RNG.
+// checksumSize controls the number of words: 4=12, 5=15, 6=18, 7=21, 8=24.
+// When save is true, the mnemonic's binary seed is also loaded onto the card
+// and the key ID is returned.
+func doKeycardGenerateMnemonic(kc *keycard.CommandSet, checksumSize int, save bool) (*types.Mnemonic, []byte, error) {
+	indexes, err := kc.GenerateMnemonic(checksumSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	int16Indexes := make([]int16, len(indexes))
+	for i, v := range indexes {
+		int16Indexes[i] = int16(v)
+	}
+	mnemonic, err := types.MnemonicFromIndices(int16Indexes)
+	if err != nil {
+		return nil, nil, err
+	}
+	if save {
+		seed := mnemonic.ToBinarySeed()
+		keyID, err := kc.LoadSeed(seed)
+		if err != nil {
+			return nil, nil, err
+		}
+		return mnemonic, keyID, nil
+	}
+	return mnemonic, nil, nil
 }
 
 // doKeycardExportKey exports a key with the given P2 parameter.

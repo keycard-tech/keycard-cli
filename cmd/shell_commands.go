@@ -81,7 +81,8 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-reset-pinless-path", usage: "Reset the pinless signing path (applet < 4.0 only)", handler: shellKeycardResetPinlessPath},
 
 		// Mnemonic
-		{name: "keycard-generate-mnemonic", usage: "Generate mnemonic indexes", handler: shellKeycardGenerateMnemonic},
+		{name: "keycard-generate-mnemonic", usage: "Generate a mnemonic phrase (words 12/15/18/21/24, default 12)", handler: shellKeycardGenerateMnemonic},
+		{name: "keycard-save-mnemonic", usage: "Generate a mnemonic phrase and load it onto the card (words 12/15/18/21/24, default 12)", handler: shellKeycardSaveMnemonic},
 
 		// Data management
 		{name: "keycard-get-data", usage: "Get data from the card (public, ndef, cash)", handler: shellKeycardGetData},
@@ -792,18 +793,35 @@ func shellKeycardResetPinlessPath(ctx *shellCtx, _ []string) (*shellOutput, erro
 // ---------------------------------------------------------------------------
 
 func shellKeycardGenerateMnemonic(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if err := requireArgs(args, 1); err != nil {
-		return nil, err
+	return shellKeycardGenerateMnemonicSave(ctx, args, false)
+}
+
+func shellKeycardSaveMnemonic(ctx *shellCtx, args []string) (*shellOutput, error) {
+	return shellKeycardGenerateMnemonicSave(ctx, args, true)
+}
+
+func shellKeycardGenerateMnemonicSave(ctx *shellCtx, args []string, save bool) (*shellOutput, error) {
+	words := 12
+	if len(args) >= 1 {
+		var err error
+		words, err = strconv.Atoi(args[0])
+		if err != nil {
+			return nil, err
+		}
 	}
-	checksumSize, err := strconv.ParseInt(args[0], 10, 8)
+	checksumSize := words / 3
+	mnemonic, keyID, err := doKeycardGenerateMnemonic(ctx.kc, checksumSize, save)
 	if err != nil {
 		return nil, err
 	}
-	indexes, err := ctx.kc.GenerateMnemonic(int(checksumSize))
-	if err != nil {
-		return nil, err
+	result := GenerateMnemonicResult{
+		Phrase: mnemonic.ToPhrase(),
+		Words:  words,
 	}
-	return newShellOutput(MnemonicResult{Indexes: indexes}, ctx.showSecrets), nil
+	if keyID != nil {
+		result.KeyID = "0x" + hex.EncodeToString(keyID)
+	}
+	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 // ---------------------------------------------------------------------------

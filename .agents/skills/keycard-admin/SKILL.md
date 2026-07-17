@@ -63,7 +63,7 @@ keycard set-name --name "My Card"        # Set display name
 
 ### Applet Installation (development / blank cards only)
 
-> **These commands only work on blank cards or development builds.** On production cards, GlobalPlatform restrictions prevent installing or deleting applets. To re-provision a production card, use `factory-reset` followed by `init` and `generate-key` (or `load-seed`).
+> **These commands only work on blank cards or development builds.** On production cards, GlobalPlatform restrictions prevent installing or deleting applets. To re-provision a production card, use `factory-reset` followed by `init` and `generate-mnemonic --save` (or `load-seed`).
 
 ```bash
 keycard install --applet-file <cap-file> [--keycard-applet] [--ident-applet] [--cash-applet] [--ndef-applet] [--force]
@@ -117,10 +117,12 @@ keycard change-pairing-password --new <pw>   # Change pairing password (V1 only)
 ### Key Management
 
 ```bash
-keycard generate-key                     # Generate random key on card
-keycard remove-key                       # Remove current key
+keycard generate-mnemonic --words 12 --save        # Generate mnemonic and load seed (requires --pin)
+keycard generate-mnemonic --words 12               # Generate mnemonic only (no load, no --pin needed)
+keycard generate-key                               # Generate random key on card
+keycard remove-key                                 # Remove current key
 keycard load-seed --mnemonic "word1 word2 ..."     # Load BIP39 seed
-keycard load-seed --hex "0x..."          # Load raw seed hex
+keycard load-seed --hex "0x..."                    # Load raw seed hex
 keycard load-lee-seed --mnemonic "word1 ..."       # Load LEE seed (applet ≥ 4.0)
 ```
 
@@ -212,6 +214,8 @@ keycard-open-secure-channel
 keycard-verify-pin <pin>
 keycard-unpair <index>
 keycard-generate-key
+keycard-generate-mnemonic [words]          # Generate mnemonic phrase only
+keycard-save-mnemonic [words]              # Generate mnemonic and load seed
 keycard-load-seed <mnemonic-or-hex>
 keycard-export-key-public <path>
 keycard-export-key-private <path>
@@ -247,8 +251,8 @@ keycard load-ident --test
 # 3. Initialize (generates random PIN/PUK if not specified)
 keycard init --pin-retries 3 --puk-retries 5
 
-# 4. Generate a key
-keycard generate-key 
+# 4. Generate a mnemonic and load it onto the card
+keycard generate-mnemonic --save 
 
 # 5. Verify
 keycard info --json
@@ -276,7 +280,7 @@ keycard factory-reset --yes
 
 # Re-initialize and load keys
 keycard init
-keycard generate-key
+keycard generate-mnemonic --save
 ```
 
 For development/blank cards where you also need to reinstall applets:
@@ -285,7 +289,7 @@ For development/blank cards where you also need to reinstall applets:
 keycard install --applet-file keycard_v4.cap --force --yes
 keycard load-ident --test
 keycard init
-keycard generate-key
+keycard generate-mnemonic --save
 ```
 
 ### Shell Script: Sign Multiple Messages
@@ -313,7 +317,7 @@ EOF
 | `applet not installed` | Applets were deleted or card is blank | Run `keycard install` |
 | `PIN verification failed` | Wrong PIN | Check `KEYCARD_PIN`, use `unblock-pin` if blocked |
 | `PIN blocked` | Too many failed attempts | Use `keycard unblock-pin --puk $KEYCARD_PUK` |
-| `no key loaded` | Key was removed or card reset | Run `keycard generate-key` or `load-seed` |
+| `no key loaded` | Key was removed or card reset | Run `keycard generate-mnemonic --save` or `load-seed` |
 | `secure channel error` | Pairing issue (V1) or cert mismatch (V2) | Re-pair or check `--card-ca` / `--test-card` |
 | `command not available` | Applet version too old | Update applet via `keycard install` (dev cards only) |
 | `bad response 6982` / `6985` | APDU security error | Card may need a moment to stabilize. Retry after a brief delay. |
