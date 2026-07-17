@@ -258,7 +258,7 @@ keycard export-lee-key --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
 Export a BIP85 derived key (applet >= 4.0 only).
 
 ```bash
-keycard export-bip85 --path "1" --length 64 --pin YOUR_PIN
+keycard export-bip85 --path "m/83696968'/39'/0'/12'/0'" --length 16 --pin YOUR_PIN
 ```
 
 ### Signing
