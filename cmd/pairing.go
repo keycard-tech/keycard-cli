@@ -50,8 +50,8 @@ func PairingCommands() []*cli.Command {
 
 func cmdPair(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("pairing is not needed for Secure Channel V2 cards")
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("pairing is not available on applet version 4.0+")
 		}
 
 		secrets := internal.ResolveSecrets("", "", cmd.String("pairing-password"))
@@ -70,8 +70,8 @@ func cmdPair(ctx context.Context, cmd *cli.Command) error {
 
 func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("unpair is not needed for Secure Channel V2 cards")
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("unpair is not available on applet version 4.0+")
 		}
 
 		index := uint8(cmd.Int("index"))
@@ -85,8 +85,8 @@ func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
 
 func cmdUnpairOthers(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("unpair-others is not needed for Secure Channel V2 cards")
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("unpair-others is not available on applet version 4.0+")
 		}
 
 		if err := kc.UnpairOthers(); err != nil {

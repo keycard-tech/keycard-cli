@@ -59,7 +59,7 @@ keycard version                                    # CLI version
 keycard info [--json]                              # Card info (applet, key, status)
 keycard get-status [--json]                        # PIN retries, key path, etc.
 keycard get-name [--json]                          # Card display name
-keycard set-name --name "My Card"        # Set display name
+keycard set-name --name "My Card"                  # Set display name
 ```
 
 ### Applet Installation (development / blank cards only)

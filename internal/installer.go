@@ -83,9 +83,9 @@ func (i *Installer) Install(capFile *os.File, overwriteApplet bool, installKeyca
 	}
 
 	if installIdent {
-		installerLogger.Info("installing Keycard applet")
+		installerLogger.Info("installing Ident applet")
 		if err = cmdSet.InstallIdentApplet(); err != nil {
-			installerLogger.Error("installing Keycard applet failed", "error", err)
+			installerLogger.Error("installing Ident applet failed", "error", err)
 			return err
 		}
 	}	

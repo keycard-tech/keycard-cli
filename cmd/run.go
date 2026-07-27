@@ -77,43 +77,37 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 		if err := kc.AutoOpenSecureChannel(); err != nil {
 			return err
 		}
-		// On V1, the UNPAIR command requires a verified PIN. For
-			// AuthSecureChannel-level commands we normally don't verify the
-			// PIN, but if one is available we verify it so that the deferred
-			// unpair actually succeeds. Without this, every invocation of a
-			// read-only command (get-status, get-data, etc.) permanently
-			// consumes one of the card's 5 pairing slots.
-			if !internal.IsSecureChannelV2(kc) && secrets.Pin != "" {
-				if err := kc.VerifyPIN(secrets.Pin); err != nil {
-					return err
-				}
-			}
-	case AuthPIN:
-		// Full auth: secure channel + PIN verification
-			if !internal.IsSecureChannelV2(kc) && secrets.PairingPass != "" {
-				if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
-					return err
-				}
-				paired = true
-				// Defer unpair immediately after pairing.
-				defer func() {
-					if paired && !internal.IsSecureChannelV2(kc) {
-						if err := internal.AutoUnpair(kc); err != nil && retErr == nil {
-							retErr = fmt.Errorf("error unpairing from card: %w", err)
-						}
-					}
-				}()
-			}
-			if err := kc.AutoOpenSecureChannel(); err != nil {
-				return err
-			}
-
-			if err := internal.RequirePIN(secrets); err != nil {
-				return err
-			}
+		if !internal.IsSecureChannelV2(kc) && secrets.Pin != "" {
 			if err := kc.VerifyPIN(secrets.Pin); err != nil {
 				return err
 			}
+		}
+	case AuthPIN:
+		// Full auth: secure channel + PIN verification
+		if !internal.IsSecureChannelV2(kc) && secrets.PairingPass != "" {
+			if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
+				return err
+			}
+			paired = true
+			// Defer unpair immediately after pairing.
+			defer func() {
+				if paired && !internal.IsSecureChannelV2(kc) {
+					if err := internal.AutoUnpair(kc); err != nil && retErr == nil {
+						retErr = fmt.Errorf("error unpairing from card: %w", err)
+					}
+				}
+			}()
+		}
+		if err := kc.AutoOpenSecureChannel(); err != nil {
+			return err
+		}
+
+		if err := internal.RequirePIN(secrets); err != nil {
+			return err
+		}
+		if err := kc.VerifyPIN(secrets.Pin); err != nil {
+			return err
+		}
 	}
 
 	return fn(kc, cmd)

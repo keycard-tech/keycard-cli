@@ -30,8 +30,8 @@ func cmdIdentify(ctx context.Context, cmd *cli.Command) error {
 	expectedKeyHex := cmd.String("public-key")
 
 	return runCard(cmd, AuthNone, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("identify is not supported on Secure Channel V2")
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("identify is not available on applet version 4.0+")
 		}
 
 		var expectedKey []byte

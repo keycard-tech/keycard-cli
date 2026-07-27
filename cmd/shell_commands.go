@@ -399,8 +399,8 @@ func shellKeycardSetPairing(ctx *shellCtx, args []string) (*shellOutput, error) 
 // ---------------------------------------------------------------------------
 
 func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "pairing is not needed for Secure Channel V2"}, ctx.showSecrets), nil
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return newShellOutput(ActionResult{Message: "pairing is not available on applet version 4.0+"}, ctx.showSecrets), nil
 	}
 	if ctx.secrets == nil {
 		return nil, errors.New("cannot pair without setting secrets")
@@ -417,8 +417,8 @@ func shellKeycardPair(ctx *shellCtx, _ []string) (*shellOutput, error) {
 }
 
 func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "unpair is not needed for Secure Channel V2"}, ctx.showSecrets), nil
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return newShellOutput(ActionResult{Message: "unpair is not available on applet version 4.0+"}, ctx.showSecrets), nil
 	}
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
@@ -437,8 +437,8 @@ func shellKeycardUnpair(ctx *shellCtx, args []string) (*shellOutput, error) {
 }
 
 func shellKeycardUnpairOthers(ctx *shellCtx, _ []string) (*shellOutput, error) {
-	if internal.IsSecureChannelV2(ctx.kc) {
-		return newShellOutput(ActionResult{Message: "unpair-others is not needed for Secure Channel V2 cards"}, ctx.showSecrets), nil
+	if internal.IsAppletV4Plus(ctx.kc) {
+		return newShellOutput(ActionResult{Message: "unpair-others is not available on applet version 4.0+"}, ctx.showSecrets), nil
 	}
 	if err := ctx.kc.UnpairOthers(); err != nil {
 		return nil, err

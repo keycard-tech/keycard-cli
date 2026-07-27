@@ -26,21 +26,12 @@ import (
 func ShellCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "shell",
-		Usage: "Start interactive shell or run a script file",
+		Usage: "Start a shell session (reads from script file or stdin)",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
 				Aliases: []string{"f"},
 				Usage:   "Path to script file (reads from stdin if omitted)",
-			},
-			&cli.BoolFlag{
-				Name:    "json",
-				Aliases: []string{"j"},
-				Usage:   "Output each command result as a JSON line (JSONL)",
-			},
-			&cli.BoolFlag{
-				Name:  "show-secrets",
-				Usage: "Show secrets (PIN, PUK, pairing keys) in output. Hidden by default",
 			},
 		},
 		Action: cmdShell,
@@ -75,7 +66,10 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 		return runShell(card, f, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
 	}
 
-	fi, _ := os.Stdin.Stat()
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return fmt.Errorf("error checking stdin: %w", err)
+	}
 	if (fi.Mode() & os.ModeCharDevice) == 0 {
 		return runShell(card, os.Stdin, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
 	}
@@ -86,9 +80,9 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bool, cmd *cli.Command, secrets *keycard.Secrets) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc, err := newCommandSet(ch, cmd)
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
 	cashKC := keycard.NewCashCommandSet(ch)
 	identKC := keycard.NewIdentCommandSet(ch)
 	gp := globalplatform.NewCommandSet(ch)

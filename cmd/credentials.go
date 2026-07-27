@@ -117,8 +117,8 @@ func cmdUnblockPIN(ctx context.Context, cmd *cli.Command) error {
 
 func cmdChangePairingPassword(ctx context.Context, cmd *cli.Command) error {
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		if internal.IsSecureChannelV2(kc) {
-			return fmt.Errorf("pairing password change is not applicable for Secure Channel V2 cards")
+		if internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("change-pairing-password is not available on applet version 4.0+")
 		}
 		if err := kc.ChangePairingPassword(cmd.String("new")); err != nil {
 			return err
