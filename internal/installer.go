@@ -88,7 +88,7 @@ func (i *Installer) Install(capFile *os.File, overwriteApplet bool, installKeyca
 			installerLogger.Error("installing Ident applet failed", "error", err)
 			return err
 		}
-	}	
+	}
 
 	if installCash {
 		installerLogger.Info("installing Cash applet")

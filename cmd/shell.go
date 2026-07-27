@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"text/template"
 	"io"
 	"os"
 	"regexp"
 	"strings"
+	"text/template"
 
 	"github.com/ebfe/scard"
 	keycard "github.com/keycard-tech/keycard-go/v4"
@@ -292,5 +292,3 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 
 	return buf.String(), nil
 }
-
-

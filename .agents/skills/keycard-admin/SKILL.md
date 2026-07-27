@@ -31,6 +31,10 @@ Full administrative operations for [Status Keycard](https://github.com/keycard-t
 - PIN is managed via `KEYCARD_PIN` env var. The CLI reads it automatically — **prefer the env var over `--pin`** (command-line flags are visible in `ps` and shell history).
 - PUK is managed via `KEYCARD_PUK` env var. PUK is needed for PIN unblocking **and** for `init` (it's part of the card credentials).
 - Pairing password (V1 cards only) via `KEYCARD_PAIRING_PASSWORD` env var.
+- New credential values (for change/unblock commands) can be passed via env vars to avoid exposure:
+  - `KEYCARD_NEW_PIN` — for `change-pin` and `unblock-pin`
+  - `KEYCARD_NEW_PUK` — for `change-puk`
+  - `KEYCARD_NEW_PAIRING_PASSWORD` — for `change-pairing-password`
 - Outputs mask secrets by default. Use `--show-secrets` only during debugging and never in logs.
 - **Always confirm destructive operations with the user before proceeding.**
 
@@ -42,13 +46,13 @@ Full administrative operations for [Status Keycard](https://github.com/keycard-t
 | `--yes` / `-y` | Skip interactive confirmations |
 | `--pin <pin>` | Override PIN (prefer `KEYCARD_PIN` env var) |
 | `--puk <puk>` | Override PUK (prefer `KEYCARD_PUK` env var) |
-| `--pairing-password <pw>` | Override pairing password (V1 only) |
+| `--pairing-password <pw>` | Override pairing password (V1 only, prefer `KEYCARD_PAIRING_PASSWORD` env var) |
 | `--reader <name>` | Select specific reader |
 | `--log-level <level>` | debug, info, warn, error |
 | `--show-secrets` | Show secrets in output (hidden by default) |
-| `--test-card` | Use test CA for V2 certificate verification |
-| `--card-ca <hex>` | CA public key for V2 cert verification (33 bytes compressed, with or without `0x`) |
-| `--whitelist-card <hex>` | Whitelisted card identity public key (33 bytes compressed, with or without `0x`) |
+| `--test-card` | Use test CA for V2 certificate verification (prefers `KEYCARD_TEST_CARD` env var) |
+| `--card-ca <hex>` | CA public key for V2 cert verification (33 bytes compressed, with or without `0x`, prefers `KEYCARD_CARD_CA` env var) |
+| `--whitelist-card <hex>` | Whitelisted card identity public key (33 bytes compressed, with or without `0x`, prefers `KEYCARD_WHITELIST_CARD` env var) |
 
 ## Command Reference
 
@@ -106,13 +110,14 @@ V2 cards (applet ≥ 4.0) use certificate-based authentication — pairing is no
 ### Credentials
 
 > PIN is 6 digits, PUK is 12 digits.
+> Prefer `KEYCARD_NEW_PIN`, `KEYCARD_NEW_PUK`, and `KEYCARD_NEW_PAIRING_PASSWORD` env vars for new credential values to avoid exposing them on the command line.
 
 ```bash
-keycard verify-pin                       # Verify PIN
-keycard change-pin --new <new-pin>       # Change PIN (6 digits)
-keycard change-puk --new <new-puk>       # Change PUK (12 digits)
-keycard unblock-pin --puk $PUK --new-pin <new-pin> # Unblock PIN with PUK
-keycard change-pairing-password --new <pw>   # Change pairing password (V1 only)
+keycard verify-pin               # Verify PIN
+keycard change-pin               # Change PIN (6 digits)
+keycard change-puk               # Change PUK (12 digits)
+keycard unblock-pin              # Unblock PIN with PUK
+keycard change-pairing-password  # Change pairing password (V1 only)
 ```
 
 ### Key Management

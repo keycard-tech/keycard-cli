@@ -75,16 +75,19 @@ func LifecycleCommands() []*cli.Command {
 			Usage: "Initialize the card",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:  "pin",
-					Usage: "PIN (or KEYCARD_PIN env var)",
+					Name:    "pin",
+					Usage:   "PIN",
+					Sources: cli.EnvVars("KEYCARD_PIN"),
 				},
 				&cli.StringFlag{
-					Name:  "puk",
-					Usage: "PUK (or KEYCARD_PUK env var)",
+					Name:    "puk",
+					Usage:   "PUK",
+					Sources: cli.EnvVars("KEYCARD_PUK"),
 				},
 				&cli.StringFlag{
-					Name:  "pairing-password",
-					Usage: "Pairing password (V1 only, or KEYCARD_PAIRING_PASSWORD env var)",
+					Name:    "pairing-password",
+					Usage:   "Pairing password (V1 only)",
+					Sources: cli.EnvVars("KEYCARD_PAIRING_PASSWORD"),
 				},
 				&cli.StringFlag{
 					Name:  "alt-pin",
@@ -230,7 +233,7 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			genSecrets, err := keycard.GenerateSecrets()
 			if err != nil {
 				return err
-			}			
+			}
 			altPin = genSecrets.Pin()
 		} else {
 			altPin = cmd.String("alt-pin")

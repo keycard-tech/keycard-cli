@@ -59,7 +59,7 @@ The following flags are available on all commands:
 | `--whitelist-card <hex>` | Whitelisted card identity public key (hex, 33 bytes compressed) |
 | `--show-secrets` | Show secrets (PIN, PUK, pairing keys) in output. Hidden by default |
 
-> **Security tip:** Passing `--pin`, `--puk`, or `--pairing-password` on the command line exposes them in your shell history and `ps` output. Prefer using the `KEYCARD_PIN`, `KEYCARD_PUK`, and `KEYCARD_PAIRING_PASSWORD` environment variables instead.
+> **Security tip:** Passing credentials like `--pin`, `--puk`, `--pairing-password`, `--new`, or `--new-pin` on the command line exposes them in your shell history and `ps` output. Prefer using the `KEYCARD_PIN`, `KEYCARD_PUK`, `KEYCARD_PAIRING_PASSWORD`, `KEYCARD_NEW_PIN`, `KEYCARD_NEW_PUK`, and `KEYCARD_NEW_PAIRING_PASSWORD` environment variables instead.
 
 ## Environment Variables
 
@@ -68,6 +68,9 @@ The following flags are available on all commands:
 | `KEYCARD_PIN` | Default PIN for card authentication |
 | `KEYCARD_PUK` | Default PUK for card unblocking |
 | `KEYCARD_PAIRING_PASSWORD` | Default pairing password for V1 cards |
+| `KEYCARD_NEW_PIN` | New PIN for `change-pin` and `unblock-pin` |
+| `KEYCARD_NEW_PUK` | New PUK for `change-puk` |
+| `KEYCARD_NEW_PAIRING_PASSWORD` | New pairing password for `change-pairing-password` |
 | `KEYCARD_CARD_CA` | CA public key for V2 certificate verification |
 | `KEYCARD_TEST_CARD` | Use test card CA (set to any non-zero/false value) |
 | `KEYCARD_WHITELIST_CARD` | Whitelisted card identity public key |
@@ -335,6 +338,8 @@ keycard identify --pin $KEYCARD_PIN
 ```
 
 ### Credentials
+
+> **Note:** The examples below pass credentials on the command line for clarity. In production, use environment variables (`KEYCARD_PIN`, `KEYCARD_PUK`, `KEYCARD_PAIRING_PASSWORD`, `KEYCARD_NEW_PIN`, `KEYCARD_NEW_PUK`, `KEYCARD_NEW_PAIRING_PASSWORD`) to avoid exposing secrets in shell history and `ps` output.
 
 #### `verify-pin`
 

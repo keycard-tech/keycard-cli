@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/urfave/cli/v3"
@@ -26,6 +25,7 @@ func CredentialsCommands() []*cli.Command {
 				&cli.StringFlag{
 					Name:     "new",
 					Usage:    "New PIN",
+					Sources:  cli.EnvVars("KEYCARD_NEW_PIN"),
 					Required: true,
 				},
 			},
@@ -38,6 +38,7 @@ func CredentialsCommands() []*cli.Command {
 				&cli.StringFlag{
 					Name:     "new",
 					Usage:    "New PUK",
+					Sources:  cli.EnvVars("KEYCARD_NEW_PUK"),
 					Required: true,
 				},
 			},
@@ -48,12 +49,14 @@ func CredentialsCommands() []*cli.Command {
 			Usage: "Unblock the PIN using the PUK",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:  "puk",
-					Usage: "PUK (or KEYCARD_PUK env var)",
+					Name:    "puk",
+					Usage:   "PUK",
+					Sources: cli.EnvVars("KEYCARD_PUK"),
 				},
 				&cli.StringFlag{
 					Name:     "new-pin",
 					Usage:    "New PIN",
+					Sources:  cli.EnvVars("KEYCARD_NEW_PIN"),
 					Required: true,
 				},
 			},
@@ -66,6 +69,7 @@ func CredentialsCommands() []*cli.Command {
 				&cli.StringFlag{
 					Name:     "new",
 					Usage:    "New pairing password",
+					Sources:  cli.EnvVars("KEYCARD_NEW_PAIRING_PASSWORD"),
 					Required: true,
 				},
 			},
@@ -100,11 +104,6 @@ func cmdChangePUK(ctx context.Context, cmd *cli.Command) error {
 
 func cmdUnblockPIN(ctx context.Context, cmd *cli.Command) error {
 	puk := cmd.String("puk")
-	if puk == "" {
-		if v := os.Getenv("KEYCARD_PUK"); v != "" {
-			puk = v
-		}
-	}
 	newPIN := cmd.String("new-pin")
 
 	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {

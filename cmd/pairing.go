@@ -18,8 +18,9 @@ func PairingCommands() []*cli.Command {
 			Usage: "Pair with the card (applet < 4.0 only)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:  "pairing-password",
-					Usage: "Pairing password (or KEYCARD_PAIRING_PASSWORD env var)",
+					Name:    "pairing-password",
+					Usage:   "Pairing password",
+					Sources: cli.EnvVars("KEYCARD_PAIRING_PASSWORD"),
 				},
 			},
 			Action: cmdPair,
@@ -34,8 +35,9 @@ func PairingCommands() []*cli.Command {
 					Required: true,
 				},
 				&cli.StringFlag{
-					Name:  "pairing-password",
-					Usage: "Pairing password (or KEYCARD_PAIRING_PASSWORD env var)",
+					Name:    "pairing-password",
+					Usage:   "Pairing password",
+					Sources: cli.EnvVars("KEYCARD_PAIRING_PASSWORD"),
 				},
 			},
 			Action: cmdUnpair,

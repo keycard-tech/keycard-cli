@@ -60,16 +60,19 @@ func main() {
 				Value:   "info",
 			},
 			&cli.StringFlag{
-				Name:  "pin",
-				Usage: "PIN (Also as KEYCARD_PIN env var)",
+				Name:    "pin",
+				Usage:   "PIN",
+				Sources: cli.EnvVars("KEYCARD_PIN"),
 			},
 			&cli.StringFlag{
-				Name:  "puk",
-				Usage: "PUK (Also as KEYCARD_PUK env var)",
+				Name:    "puk",
+				Usage:   "PUK",
+				Sources: cli.EnvVars("KEYCARD_PUK"),
 			},
 			&cli.StringFlag{
-				Name:  "pairing-password",
-				Usage: "Pairing password (Also as KEYCARD_PAIRING_PASSWORD env var)",
+				Name:    "pairing-password",
+				Usage:   "Pairing password",
+				Sources: cli.EnvVars("KEYCARD_PAIRING_PASSWORD"),
 			},
 			&cli.BoolFlag{
 				Name:    "json",
@@ -86,16 +89,19 @@ func main() {
 				Usage: "Specific reader name (or auto-detect)",
 			},
 			&cli.StringFlag{
-				Name:  "card-ca",
-				Usage: "CA public key for V2 certificate verification (hex, 33 bytes compressed. Also as KEYCARD_CARD_CA env var)",
+				Name:    "card-ca",
+				Usage:   "CA public key for V2 certificate verification (hex, 33 bytes compressed)",
+				Sources: cli.EnvVars("KEYCARD_CARD_CA"),
 			},
 			&cli.BoolFlag{
-				Name:  "test-card",
-				Usage: "Use test card CA (shortcut for --card-ca with test CA public key. Also as KEYCARD_TEST_CARD env var)",
+				Name:    "test-card",
+				Usage:   "Use test card CA (shortcut for --card-ca with test CA public key)",
+				Sources: cli.EnvVars("KEYCARD_TEST_CARD"),
 			},
 			&cli.StringFlag{
-				Name:  "whitelist-card",
-				Usage: "Whitelisted card identity public key (hex, 33 bytes compressed. Also as KEYCARD_WHITELIST_CARD env var)",
+				Name:    "whitelist-card",
+				Usage:   "Whitelisted card identity public key (hex, 33 bytes compressed)",
+				Sources: cli.EnvVars("KEYCARD_WHITELIST_CARD"),
 			},
 			&cli.BoolFlag{
 				Name:  "show-secrets",

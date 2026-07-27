@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/keycard-tech/keycard-go/v4/globalplatform"
@@ -179,24 +178,6 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) (*keycard.CommandSet, err
 	// --test-card is a shortcut for --card-ca with the test CA public key
 	if cmd.Bool("test-card") && cardCA == "" {
 		cardCA = testCardCA
-	}
-
-	// Fallback to environment variables
-	if cardCA == "" {
-		if v := os.Getenv("KEYCARD_CARD_CA"); v != "" {
-			cardCA = v
-		}
-	}
-	if whitelistCard == "" {
-		if v := os.Getenv("KEYCARD_WHITELIST_CARD"); v != "" {
-			whitelistCard = v
-		}
-	}
-	// KEYCARD_TEST_CARD env var acts like --test-card flag
-	if cardCA == "" {
-		if v := os.Getenv("KEYCARD_TEST_CARD"); v != "" && v != "0" && v != "false" {
-			cardCA = testCardCA
-		}
 	}
 
 	if cardCA == "" && whitelistCard == "" {

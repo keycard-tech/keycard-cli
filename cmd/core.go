@@ -436,11 +436,11 @@ func (r ExportedKeyResult) Format(_ bool) string {
 
 // SignatureResult holds signature data.
 type SignatureResult struct {
-	R      string `json:"signature_r"`
-	S      string `json:"signature_s"`
-	V      int    `json:"signature_v"`
-	Path   string `json:"path,omitempty"`
-	File   string `json:"file,omitempty"`
+	R    string `json:"signature_r"`
+	S    string `json:"signature_s"`
+	V    int    `json:"signature_v"`
+	Path string `json:"path,omitempty"`
+	File string `json:"file,omitempty"`
 }
 
 func (r SignatureResult) Format(_ bool) string {
@@ -583,7 +583,9 @@ func doGPSendAPDU(gp *globalplatform.CommandSet, rawCmd []byte) (*apdu.Response,
 	if err != nil {
 		return nil, err
 	}
-	var channel interface{ Send(*apdu.Command) (*apdu.Response, error) }
+	var channel interface {
+		Send(*apdu.Command) (*apdu.Response, error)
+	}
 	if sc := gp.SecureChannel(); sc != nil {
 		channel = sc
 	} else {
@@ -614,7 +616,7 @@ func doKeycardInit(kc *keycard.CommandSet, pin, puk, pairingPass, altPin string,
 	if internal.IsSecureChannelV2(kc) {
 		return kc.InitWithOptionsV2(pin, altPin, puk, pinRetries, pukRetries)
 	}
-	
+
 	return kc.InitWithOptions(pin, altPin, puk, pairingPass, pinRetries, pukRetries)
 }
 
@@ -737,8 +739,6 @@ func doKeycardInfoCash(cashKC *keycard.CashCommandSet) (*CashInfoResult, error) 
 
 	return result, nil
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Pairing core functions

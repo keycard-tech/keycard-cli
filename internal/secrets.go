@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"os"
 )
 
 const KeycardDefaultPairing = "KeycardDefaultPairing"
@@ -14,41 +13,18 @@ type Secrets struct {
 	PairingPass string
 }
 
-// ResolveSecrets resolves secrets from CLI flags and environment variables.
-// Priority: CLI flags > environment variables.
+// ResolveSecrets resolves secrets from CLI flags.
+// Priority: CLI flags > environment variables (handled by the CLI framework).
 // Pairing password defaults to KeycardDefaultPairing if not provided.
 func ResolveSecrets(pinFlag, pukFlag, pairingFlag string) *Secrets {
 	secrets := &Secrets{}
 
-	// 1. CLI flags
-	if pinFlag != "" {
-		secrets.Pin = pinFlag
-	}
-	if pukFlag != "" {
-		secrets.Puk = pukFlag
-	}
-	if pairingFlag != "" {
-		secrets.PairingPass = pairingFlag
-	}
+	// CLI flags (env vars are already resolved by the CLI framework via Sources)
+	secrets.Pin = pinFlag
+	secrets.Puk = pukFlag
+	secrets.PairingPass = pairingFlag
 
-	// 2. Environment variables
-	if secrets.Pin == "" {
-		if v := os.Getenv("KEYCARD_PIN"); v != "" {
-			secrets.Pin = v
-		}
-	}
-	if secrets.Puk == "" {
-		if v := os.Getenv("KEYCARD_PUK"); v != "" {
-			secrets.Puk = v
-		}
-	}
-	if secrets.PairingPass == "" {
-		if v := os.Getenv("KEYCARD_PAIRING_PASSWORD"); v != "" {
-			secrets.PairingPass = v
-		}
-	}
-
-	// 3. Default pairing password
+	// Default pairing password
 	if secrets.PairingPass == "" {
 		secrets.PairingPass = KeycardDefaultPairing
 	}
