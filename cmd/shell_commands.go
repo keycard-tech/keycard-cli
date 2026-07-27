@@ -131,7 +131,7 @@ func shellGPSendAPDU(ctx *shellCtx, args []string) (*shellOutput, error) {
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
-	rawCmd, err := hex.DecodeString(args[0])
+	rawCmd, err := parseHexShell(args[0])
 	if err != nil {
 		return nil, err
 	}
@@ -279,38 +279,61 @@ func shellKeycardInit(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if ctx.kc.AppInfo().Initialized {
 		return nil, errors.New("card already initialized")
 	}
-	if ctx.secrets == nil {
-		secrets, err := keycard.GenerateSecrets()
+
+	// Collect secrets, generating random ones for any that are missing.
+	// Previously this checked ctx.secrets == nil, but runShell always
+	// creates a non-nil secrets when any pin/puk/pairing is provided via
+	// CLI or env, so the nil check was dead code and pin/puk were left
+	// empty — initializing the card with a blank PIN.
+	pin := ""
+	puk := ""
+	pairing := ""
+	if ctx.secrets != nil {
+		pin = ctx.secrets.Pin()
+		puk = ctx.secrets.Puk()
+		pairing = ctx.secrets.PairingPass()
+	}
+	if pin == "" || puk == "" {
+		gen, err := keycard.GenerateSecrets()
 		if err != nil {
 			return nil, err
 		}
-		ctx.secrets = secrets
+		if pin == "" {
+			pin = gen.Pin()
+		}
+		if puk == "" {
+			puk = gen.Puk()
+		}
+		if pairing == "" {
+			pairing = gen.PairingPass()
+		}
 	}
+	ctx.secrets = keycard.NewSecrets(pin, puk, pairing)
 
 	genSecrets, err := keycard.GenerateSecrets()
 	if err != nil {
 		return nil, err
-	}			
+	}
 	altPin := genSecrets.Pin()
 
-	if err := doKeycardInit(ctx.kc, ctx.secrets.Pin(), ctx.secrets.Puk(), ctx.secrets.PairingPass(), altPin, 3, 5); err != nil {
+	if err := doKeycardInit(ctx.kc, pin, puk, pairing, altPin, 3, 5); err != nil {
 		return nil, err
 	}
 
 	v2 := internal.IsSecureChannelV2(ctx.kc)
 	result := InitResult{
-		Pin: ctx.secrets.Pin(),
-		Puk: ctx.secrets.Puk(),
+		Pin: pin,
+		Puk: puk,
 	}
 	if !v2 {
-		result.PairingPassword = ctx.secrets.PairingPass()
+		result.PairingPassword = pairing
 	}
 	return newShellOutput(result, ctx.showSecrets), nil
 }
 
 func shellKeycardFactoryReset(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	info := ctx.kc.AppInfo()
-	if !info.Installed {
+	if info == nil || !info.Installed {
 		return nil, errors.New("keycard applet not installed")
 	}
 	if !info.HasFactoryResetCapability() {
@@ -525,12 +548,15 @@ func shellKeycardDeriveKey(ctx *shellCtx, args []string) (*shellOutput, error) {
 }
 
 func shellKeycardLoadSeed(ctx *shellCtx, args []string) (*shellOutput, error) {
-	if err := requireArgs(args, 1); err != nil {
-		return nil, err
+	if len(args) < 1 {
+		return nil, errors.New("keycard-load-seed requires at least 1 argument (hex or mnemonic phrase)")
 	}
 
+	// Join all args so multi-word mnemonic phrases work (the shell tokenizer
+	// splits on whitespace, so a 12-word phrase arrives as 12 args).
+	input := strings.Join(args, " ")
+
 	var seed []byte
-	input := args[0]
 
 	// Try mnemonic first; if it validates, derive the seed from the phrase.
 	// Otherwise fall back to hex parsing.
@@ -645,12 +671,12 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 	length := int64(64)
 	if len(args) == 2 {
 		var err error
-		length, err = strconv.ParseInt(args[1], 10, 8)
+		length, err = strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
 			return nil, err
 		}
 	}
-	key, err := ctx.kc.ExportBIP85(args[0], uint8(length))
+	key, err := doKeycardExportBIP85(ctx.kc, args[0], int(length))
 	if err != nil {
 		return nil, err
 	}
@@ -809,8 +835,7 @@ func shellKeycardGenerateMnemonicSave(ctx *shellCtx, args []string, save bool) (
 			return nil, err
 		}
 	}
-	checksumSize := words / 3
-	mnemonic, keyID, err := doKeycardGenerateMnemonic(ctx.kc, checksumSize, save)
+	mnemonic, keyID, err := doKeycardGenerateMnemonic(ctx.kc, words, save)
 	if err != nil {
 		return nil, err
 	}
@@ -874,11 +899,11 @@ func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error
 	if err := requireArgs(args, 1); err != nil {
 		return nil, err
 	}
-	length, err := strconv.ParseInt(args[0], 10, 8)
+	length, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	challenge, err := ctx.kc.GetChallenge(uint8(length))
+	challenge, err := doKeycardGetChallenge(ctx.kc, int(length))
 	if err != nil {
 		return nil, err
 	}

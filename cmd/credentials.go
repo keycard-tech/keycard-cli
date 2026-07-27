@@ -48,9 +48,8 @@ func CredentialsCommands() []*cli.Command {
 			Usage: "Unblock the PIN using the PUK",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:     "puk",
-					Usage:    "PUK (or KEYCARD_PUK env var)",
-					Required: true,
+					Name:  "puk",
+					Usage: "PUK (or KEYCARD_PUK env var)",
 				},
 				&cli.StringFlag{
 					Name:     "new-pin",

@@ -133,13 +133,13 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
-	length := uint8(cmd.Int("length"))
+	length := cmd.Int("length")
 
 	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if !internal.IsAppletV4Plus(kc) {
 			return fmt.Errorf("get-challenge is only available on applet version 4.0+")
 		}
-		challenge, err := kc.GetChallenge(length)
+		challenge, err := doKeycardGetChallenge(kc, length)
 		if err != nil {
 			return err
 		}

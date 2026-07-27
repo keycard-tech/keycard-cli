@@ -28,7 +28,9 @@ All commands support `--json` for machine-readable output.
 ## Security
 
 - **PIN is managed exclusively via the `KEYCARD_PIN` environment variable.** The CLI reads it automatically — never pass `--pin` explicitly and never echo or log the PIN value.
-- This skill covers **read and signing operations only**. If a task requires card provisioning, PIN changes, key removal, seed loading, or factory reset, report to the user that an administrative action is needed and stop.
+- This skill covers **read, signing, and key-export operations only**. If a task requires card provisioning, PIN changes, key removal, seed loading, or factory reset, report to the user that an administrative action is needed and stop.
+
+> **Note:** Most commands only export *public* keys — the private key never leaves the card. The `export-private-key` command is an exception: it exports the actual private key (EIP-1581 paths only, enforced by the applet). Treat private key output as sensitive.
 
 ## Commands
 
@@ -39,6 +41,8 @@ keycard info --json
 ```
 
 Returns card applet version, initialization status, capabilities, and certificate info. Use this first to confirm the card is present and operational.
+
+> **Note:** Most fields use `omitempty` — they are **absent** (not empty) when unset. Notably, `pin_retries` disappears when 0 (i.e. a blocked card). On V1 cards, `instance_uid` and `available_slots` are present but undocumented here.
 
 **Output:**
 
@@ -87,6 +91,8 @@ Returns PIN/PUK retries remaining, key initialization status, and current key pa
 }
 ```
 
+> **Note:** On applet ≥ 4.0, `key_path` is always `""` (the `GetStatusKeyPath` command is not supported).
+
 ### Get Name
 
 ```bash
@@ -111,7 +117,7 @@ keycard sign --hex "<32-byte-hex>" --path "<hd-path>" --algo <ecdsa|schnorr> --j
 
 Sign a 32-byte hash. The hash must be provided as hex (with or without `0x` prefix).
 
-- `--path` — HD derivation path, e.g. `m/44'/60'/0'/0/0` (Ethereum account 0). **Always required** — always specify an explicit derivation path.
+- `--path` — HD derivation path, e.g. `m/44'/60'/0'/0/0` (Ethereum account 0). **Required on applet ≥ 4.0**; on older applets it is optional and falls back to the current key. Always pass it explicitly anyway.
 - `--algo` — `ecdsa` (default) or `schnorr`
 
 **Output:**
@@ -132,7 +138,9 @@ keycard sign-message "<message text>" --path "<hd-path>" --json
 
 Signs a human-readable message using the Ethereum Signed Message hashing format (`\x19Ethereum Signed Message...\n<len><message>`).
 
-Supports `--algo` flag (`ecdsa` default, `schnorr`).
+Supports `--algo` flag (`ecdsa` default, `schnorr`). **`--algo schnorr` requires `--path` to be specified.**
+
+> **Gotcha:** If the message text starts with `0x` and is valid hex, it is hex-decoded and the **raw bytes** are signed (not the literal string). For example, `keycard sign-message "0x4142"` signs the 2 bytes `0x41 0x42` (i.e. `AB`), not the 6-character string `0x4142`.
 
 **Output:**
 
@@ -152,7 +160,7 @@ keycard sign-file --file <path> --path "<hd-path>" --json
 
 Hashes the file content with Keccak256 and signs the resulting hash.
 
-Supports `--algo` flag (`ecdsa` default, `schnorr`).
+Supports `--algo` flag (`ecdsa` default, `schnorr`). Use `--path` with `--algo schnorr`.
 
 **Output:**
 
@@ -210,7 +218,7 @@ Export the extended key (public key + chain code) at the given path.
 keycard export-lee-key --path "<hd-path>" --json
 ```
 
-Export a Logos Execution Environment key. Supports extended derivation paths. Requires the card to be in LEE mode.
+Export a Logos Execution Environment key. Supports extended derivation paths. The applet enforces LEE-mode requirements and will return an APDU error if the card is not in LEE mode.
 
 **Output:**
 
@@ -229,7 +237,7 @@ keycard export-bip85 --path "<bip85-path>" --length <bytes> --json
 
 Derive entropy using [BIP85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki) from the card's master seed. The output is raw key material (hex) that can be fed into any wallet or key-generation scheme.
 
-`--path` is a BIP85 derivation path of the form `m/83696968'/{app_no}'/{index}'`. `--length` controls output size in bytes (default 64, max 64).
+`--path` is a BIP85 derivation path of the form `m/83696968'/{app_no}'/{index}'`. `--length` controls output size in bytes (default 64). Must be between 1 and 255. Values above 255 wrap (uint8).
 
 **Output:**
 
@@ -331,7 +339,7 @@ All commands with `--json` return a single JSON object. Key fields vary by comma
 
 | Command | Key result fields |
 |---------|------------------|
-| `info` | nested `keycard` object: `installed`, `initialized`, `app_version`, `has_master_key`, `key_uid`, `secure_channel_version`, `capabilities`, `pin_retries`, `lee_mode`, `certificate`, `identity_pub_key` |
+| `info` | nested `keycard` object: `installed`, `initialized`, `app_version`, `has_master_key`, `key_uid`, `secure_channel_version`, `capabilities`, `pin_retries`, `lee_mode`, `certificate`, `identity_pub_key`, `instance_uid` (V1), `available_slots` (V1) |
 | `get-status` | `pin_retry_count`, `puk_retry_count`, `key_initialized`, `key_path` |
 | `get-name` | `name` |
 | `sign` / `sign-message` / `sign-file` | `signature_r`, `signature_s`, `signature_v` (all hex with `0x` prefix except `v` which is an integer). `sign-file` also includes `file`. |
@@ -340,7 +348,7 @@ All commands with `--json` return a single JSON object. Key fields vary by comma
 | `export-lee-key` | `key` (hex with `0x`), `path` |
 | `export-bip85` | `key` (hex with `0x`), `path` |
 
-All hex values include the `0x` prefix.
+All hex values include the `0x` prefix, except `certificate` which is raw hex without a prefix.
 
 ## Error Handling
 
@@ -348,14 +356,14 @@ When a command fails, check the error message and act as follows:
 
 | Error condition | Action |
 |----------------|--------|
-| Card not found / reader error | Tell the user: "No keycard detected. Please insert the card into a USB reader and ensure pcscd is running." |
-| Card not initialized | Report to the user that the card needs to be initialized (admin action required). |
-| No key loaded | Report to the user that a key must be loaded onto the card (admin action required). |
-| PIN verification failed / PIN blocked | Report to the user that the PIN is incorrect or blocked and they need to unblock it with the PUK (admin action required). |
-| Secure channel / pairing error | Report to the user that the card has a pairing or secure channel issue (admin action required). |
+| `no smartcard reader found` | Tell the user: "No keycard detected. Please connect a USB smart card reader, ensure pcscd is running, and insert the card." |
+| *(command hangs / no output)* | Reader present but no card inserted → the command **blocks indefinitely**. Tell the user to insert the card. Use a timeout when scripting. |
+| `keycard applet not installed. Run 'keycard install' first` | Card is blank or applets were deleted. Report to the user (admin action required). |
+| `wrong pin. remaining attempts: N` | PIN is incorrect. Report to the user (admin action required). If N is 0, the card is blocked. |
+| `cannot open secure channel without pairing` / `card certificate verification failed: ...` | Pairing issue (V1) or cert mismatch (V2). Report to the user (admin action required). |
+| `<cmd> is not available on applet version 4.0+` / `<cmd> is only available on applet version 4.0+` | Feature requires a different applet version. Report to the user (admin action required). |
 | `bad response 6982` / `bad response 6985` | APDU security errors — the card may need a moment to stabilize. Retry after a brief delay. If persistent, report to the user. |
-| Applet version too old for a feature | Tell the user the specific feature requires a newer applet version and they may need to update the card (admin action required). |
-| Missing `--path` on sign/export | Always include `--path "m/..."` on all sign and export commands. |
+| `--path is required for applet version 4.0+` | Always include `--path "m/..."` on all sign and export commands. |
 | Unknown / unexpected error | Report the full error message to the user. |
 
 **Rule:** Never attempt to fix initialization, PIN, pairing, or key-loading issues yourself. Always report to the user.

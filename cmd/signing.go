@@ -100,6 +100,9 @@ func cmdSign(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
+	if len(data) != 32 {
+		return fmt.Errorf("data to sign must be 32 bytes, got %d", len(data))
+	}
 	return doSignCLI(cmd, data, cmd.String("path"), cmd.String("algo"), false)
 }
 
@@ -126,6 +129,9 @@ func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
 	data, err := internal.ParseHex(cmd.String("hex"))
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
+	}
+	if len(data) != 32 {
+		return fmt.Errorf("data to sign must be 32 bytes, got %d", len(data))
 	}
 	return doSignCLI(cmd, data, "", "ecdsa", true)
 }
@@ -187,6 +193,9 @@ func signWithParams(kc *keycard.CommandSet, data []byte, path, algo string, pinl
 		default:
 			return doKeycardSignWithPath(kc, data, path)
 		}
+	}
+	if strings.ToLower(algo) == "schnorr" {
+		return nil, fmt.Errorf("--algo schnorr requires --path to be specified")
 	}
 	return doKeycardSign(kc, data)
 }

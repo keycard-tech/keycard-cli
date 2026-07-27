@@ -69,18 +69,7 @@ func LifecycleCommands() []*cli.Command {
 			},
 			Action: cmdInstall,
 		},
-		{
-			Name:  "delete",
-			Usage: "Delete applets from the card",
-			Flags: []cli.Flag{
-				&cli.BoolFlag{
-					Name:    "yes",
-					Aliases: []string{"y"},
-					Usage:   "skip confirmation",
-				},
-			},
-			Action: cmdDelete,
-		},
+		{Name: "delete", Usage: "Delete applets from the card", Action: cmdDelete},
 		{
 			Name:  "init",
 			Usage: "Initialize the card",
@@ -114,23 +103,12 @@ func LifecycleCommands() []*cli.Command {
 			},
 			Action: cmdInit,
 		},
-		{
-			Name:  "factory-reset",
-			Usage: "Factory reset the card",
-			Flags: []cli.Flag{
-				&cli.BoolFlag{
-					Name:    "yes",
-					Aliases: []string{"y"},
-					Usage:   "skip confirmation",
-				},
-			},
-			Action: cmdFactoryReset,
-		},
+		{Name: "factory-reset", Usage: "Factory reset the card", Action: cmdFactoryReset},
 	}
 }
 
 func cmdVersion(ctx context.Context, cmd *cli.Command) error {
-	fmt.Printf("keycard version %s\n", "dev")
+	fmt.Printf("keycard version %s\n", Version)
 	return nil
 }
 
@@ -222,6 +200,15 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			cmd.String("pairing-password"),
 		)
 
+		pinRetries := cmd.Int("pin-retries")
+		pukRetries := cmd.Int("puk-retries")
+		if pinRetries < 1 || pinRetries > 10 {
+			return fmt.Errorf("--pin-retries must be between 1 and 10, got %d", pinRetries)
+		}
+		if pukRetries < 1 || pukRetries > 12 {
+			return fmt.Errorf("--puk-retries must be between 1 and 12, got %d", pukRetries)
+		}
+
 		if secrets.Pin == "" || secrets.Puk == "" {
 			genSecrets, err := keycard.GenerateSecrets()
 			if err != nil {
@@ -249,7 +236,7 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			altPin = cmd.String("alt-pin")
 		}
 
-		initErr := doKeycardInit(kc, secrets.Pin, secrets.Puk, secrets.PairingPass, altPin, uint8(cmd.Uint("pin-retries")), uint8(cmd.Uint("puk-retries")))
+		initErr := doKeycardInit(kc, secrets.Pin, secrets.Puk, secrets.PairingPass, altPin, uint8(pinRetries), uint8(pukRetries))
 
 		if initErr != nil {
 			return initErr

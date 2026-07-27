@@ -67,6 +67,9 @@ func cmdCashSign(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("invalid hex data: %w", err)
 	}
+	if len(data) != 32 {
+		return fmt.Errorf("data to sign must be 32 bytes, got %d", len(data))
+	}
 
 	return runCash(cmd, func(cashKC *keycard.CashCommandSet, _ *cli.Command) error {
 		sig, err := doCashSign(cashKC, data)

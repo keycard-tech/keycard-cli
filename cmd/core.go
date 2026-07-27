@@ -41,6 +41,10 @@ import (
 // OutputMode controls output format.
 type OutputMode int
 
+// Version is the CLI version string. Set by main package at startup from the
+// -ldflags value; defaults to "dev" for local builds.
+var Version = "dev"
+
 const (
 	OutputText OutputMode = iota
 	OutputJSON
@@ -55,7 +59,11 @@ type Result interface {
 // as formatted text (r.Format(showSecrets)).
 func PrintResult(mode OutputMode, r Result, showSecrets bool) error {
 	if mode == OutputJSON {
-		data, err := json.MarshalIndent(r, "", "  ")
+		var result interface{} = r
+		if !showSecrets {
+			result = maskResultForJSON(r)
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -74,6 +82,45 @@ func PrintResultCLI(cmd interface{ Bool(string) bool }, r Result) error {
 		mode = OutputJSON
 	}
 	return PrintResult(mode, r, cmd.Bool("show-secrets"))
+}
+
+// MaxStoreDataLen is the maximum number of bytes that can be stored in a single
+// store-data operation. The applet encodes the offset as a single byte
+// (offset/4), so offsets ≥ 1024 would wrap and overwrite earlier data.
+const MaxStoreDataLen = 1020
+
+// maskResultForJSON returns a copy of r with secret fields masked. Call this
+// only when secrets should be hidden (i.e. --show-secrets was not set).
+func maskResultForJSON(r Result) interface{} {
+	switch v := r.(type) {
+	case InitResult:
+		result := InitResult{
+			Pin: "***",
+			Puk: "***",
+		}
+		if v.PairingPassword != "" {
+			result.PairingPassword = "***"
+		}
+		return result
+	case SetSecretsResult:
+		return SetSecretsResult{
+			Pin:             "***",
+			Puk:             "***",
+			PairingPassword: "***",
+		}
+	case SetPairingResult:
+		return SetPairingResult{
+			PairingKey:   "***",
+			PairingIndex: v.PairingIndex,
+		}
+	case PairingResult:
+		return PairingResult{
+			PairingKey:   "***",
+			PairingIndex: v.PairingIndex,
+		}
+	default:
+		return r
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +215,7 @@ type KeycardInfo struct {
 	KeyUID               string   `json:"key_uid,omitempty"`
 	SecureChannelVersion string   `json:"secure_channel_version,omitempty"`
 	Capabilities         []string `json:"capabilities,omitempty"`
-	PINRetries           int      `json:"pin_retries,omitempty"`
+	PINRetries           int      `json:"pin_retries"`
 	LEEMode              bool     `json:"lee_mode"`
 	HasFactoryResetCap   bool     `json:"has_factory_reset_capability"`
 	// V1-V3 fields
@@ -722,10 +769,15 @@ func doKeycardGenerateKey(kc *keycard.CommandSet) ([]byte, error) {
 }
 
 // doKeycardGenerateMnemonic generates a mnemonic phrase using the card's RNG.
-// checksumSize controls the number of words: 4=12, 5=15, 6=18, 7=21, 8=24.
+// words controls the number of words: must be 12, 15, 18, 21, or 24
+// (corresponding to checksumSize 4, 5, 6, 7, 8 respectively).
 // When save is true, the mnemonic's binary seed is also loaded onto the card
 // and the key ID is returned.
-func doKeycardGenerateMnemonic(kc *keycard.CommandSet, checksumSize int, save bool) (*types.Mnemonic, []byte, error) {
+func doKeycardGenerateMnemonic(kc *keycard.CommandSet, words int, save bool) (*types.Mnemonic, []byte, error) {
+	if err := validateWordCount(words); err != nil {
+		return nil, nil, err
+	}
+	checksumSize := words / 3
 	indexes, err := kc.GenerateMnemonic(checksumSize)
 	if err != nil {
 		return nil, nil, err
@@ -749,14 +801,43 @@ func doKeycardGenerateMnemonic(kc *keycard.CommandSet, checksumSize int, save bo
 	return mnemonic, nil, nil
 }
 
+// validateWordCount validates that the word count is a valid BIP39 size.
+func validateWordCount(words int) error {
+	switch words {
+	case 12, 15, 18, 21, 24:
+		return nil
+	default:
+		return fmt.Errorf("invalid word count: %d (must be 12, 15, 18, 21, or 24)", words)
+	}
+}
+
+// doKeycardExportBIP85 exports a BIP85 derived key with validated path and length.
+// The path must start with m/83696968' (the BIP85 commitment prefix).
+func doKeycardExportBIP85(kc *keycard.CommandSet, path string, length int) ([]byte, error) {
+	if length < 1 || length > 255 {
+		return nil, fmt.Errorf("--length must be between 1 and 255 bytes, got %d", length)
+	}
+	if !strings.HasPrefix(path, "m/83696968'") {
+		return nil, fmt.Errorf("invalid BIP85 path: must start with m/83696968'")
+	}
+	return kc.ExportBIP85(path, uint8(length))
+}
+
+// doKeycardGetChallenge retrieves a random challenge from the card with
+// validated length (1-255 bytes).
+func doKeycardGetChallenge(kc *keycard.CommandSet, length int) ([]byte, error) {
+	if length < 1 || length > 255 {
+		return nil, fmt.Errorf("--length must be between 1 and 255 bytes, got %d", length)
+	}
+	return kc.GetChallenge(uint8(length))
+}
+
 // doKeycardExportKey exports a key with the given P2 parameter.
 func doKeycardExportKey(kc *keycard.CommandSet, path string, current bool, p2 uint8) (*types.ExportedKey, error) {
-	derive := path != ""
-	makeCurrent := false
-	if !derive && !current {
-		derive = false
+	if path == "" {
+		path = "."
 	}
-	return kc.ExportKeyWithP2(derive, makeCurrent, p2, path)
+	return kc.ExportKeyWithP2(true, current, p2, path)
 }
 
 // doKeycardExportKeyResult builds an ExportedKeyResult from an exported key.
@@ -838,6 +919,9 @@ func doKeycardStoreData(kc *keycard.CommandSet, dataType uint8, data []byte) err
 }
 
 func doStoreDataChunked(kc *keycard.CommandSet, dataType uint8, data []byte) error {
+	if len(data) > MaxStoreDataLen {
+		return fmt.Errorf("data too large: %d bytes (maximum supported is %d)", len(data), MaxStoreDataLen)
+	}
 	chunkSize := 220
 	offset := uint16(0)
 	for i := 0; i < len(data); i += chunkSize {

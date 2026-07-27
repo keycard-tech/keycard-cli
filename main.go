@@ -46,6 +46,8 @@ func initLogger(logLevel string) {
 }
 
 func main() {
+	cmd.Version = version
+
 	app := &cli.Command{
 		Name:    "keycard",
 		Usage:   "Keycard CLI tool — manage Status Keycard hardware wallets",

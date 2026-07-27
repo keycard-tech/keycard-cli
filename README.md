@@ -59,6 +59,8 @@ The following flags are available on all commands:
 | `--whitelist-card <hex>` | Whitelisted card identity public key (hex, 33 bytes compressed) |
 | `--show-secrets` | Show secrets (PIN, PUK, pairing keys) in output. Hidden by default |
 
+> **Security tip:** Passing `--pin`, `--puk`, or `--pairing-password` on the command line exposes them in your shell history and `ps` output. Prefer using the `KEYCARD_PIN`, `KEYCARD_PUK`, and `KEYCARD_PAIRING_PASSWORD` environment variables instead.
+
 ## Environment Variables
 
 | Variable | Description |
@@ -66,6 +68,9 @@ The following flags are available on all commands:
 | `KEYCARD_PIN` | Default PIN for card authentication |
 | `KEYCARD_PUK` | Default PUK for card unblocking |
 | `KEYCARD_PAIRING_PASSWORD` | Default pairing password for V1 cards |
+| `KEYCARD_CARD_CA` | CA public key for V2 certificate verification |
+| `KEYCARD_TEST_CARD` | Use test card CA (set to any non-zero/false value) |
+| `KEYCARD_WHITELIST_CARD` | Whitelisted card identity public key |
 
 ## CLI Commands
 
@@ -129,7 +134,7 @@ Options:
 |------|-------------|
 | `--pin <pin>` | Set a specific PIN (random if omitted) |
 | `--puk <puk>` | Set a specific PUK (random if omitted) |
-| `--pairing-password <pw>` | Set pairing password (V1 only, random if omitted) |
+| `--pairing-password <pw>` | Set pairing password (V1 only; defaults to `KeycardDefaultPairing` if omitted) |
 | `--alt-pin <pin>` | Set alternative PIN (random if omitted) |
 | `--pin-retries <n>` | Number of PIN retries allowed (default: 3) |
 | `--puk-retries <n>` | Number of PUK retries allowed (default: 5) |
@@ -166,7 +171,7 @@ keycard unpair --index 0 --pin YOUR_PIN
 
 #### `unpair-all`
 
-Remove all other pairings (keep current session).
+Remove all pairings from the card (including the current session).
 
 ```bash
 keycard unpair-all --pin YOUR_PIN
@@ -201,7 +206,15 @@ keycard generate-mnemonic --words 24 --save --pin YOUR_PIN     # Generate and lo
 Remove the current key from the card.
 
 ```bash
-keycard remove-key --pin YOUR_PIN
+keycard remove-key --pin $KEYCARD_PIN
+```
+
+#### `derive-key`
+
+Derive a key at the given path (applet < 4.0 only).
+
+```bash
+keycard derive-key --path "m/44'/60'/0'/0/0" --pin $KEYCARD_PIN
 ```
 
 #### `load-seed`
@@ -285,7 +298,40 @@ keycard sign-message "Hello, Keycard!" --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
 Sign a file (hashes the file content with Keccak256).
 
 ```bash
-keycard sign-file --file /path/to/file --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
+keycard sign-file --file /path/to/file --path "m/44'/60'/0'/0/0" --pin $KEYCARD_PIN
+```
+
+#### `sign-pinless`
+
+Sign without PIN verification (applet < 4.0 only). Requires a pinless signing path to be set.
+
+```bash
+keycard sign-pinless --hex "0x..."
+```
+
+#### `sign-message-pinless`
+
+Sign a message without PIN (applet < 4.0 only). Requires a pinless signing path to be set.
+
+```bash
+keycard sign-message-pinless "Hello" --pin $KEYCARD_PIN
+```
+
+#### `set-pinless-path` / `reset-pinless-path`
+
+Set or reset the pinless signing path (applet < 4.0 only).
+
+```bash
+keycard set-pinless-path --path "m/44'/60'/0'/0/0" --pin $KEYCARD_PIN
+keycard reset-pinless-path --pin $KEYCARD_PIN
+```
+
+#### `identify`
+
+Identify the card (applet < 4.0 only).
+
+```bash
+keycard identify --pin $KEYCARD_PIN
 ```
 
 ### Credentials
@@ -425,17 +471,15 @@ keycard load-ident --test
 
 ### Shell
 
-Start an interactive shell or run a script file for batch operations.
+Start a shell session that reads commands from a script file or stdin for batch operations.
+**The shell is non-interactive** — it requires either a script file (`-f`) or piped input via stdin.
 
 ```bash
-# Interactive shell
-keycard shell
-
 # Run a script file
 keycard shell -f script.sh
 
-# Pipe commands from stdin
-echo "info" | keycard shell
+# Pipe commands from stdin (example: select the applet)
+echo "keycard-select" | keycard shell
 
 # JSON output (JSONL)
 keycard shell -f script.sh --json

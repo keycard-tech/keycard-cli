@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	keycard "github.com/keycard-tech/keycard-go/v4"
 	"github.com/keycard-tech/keycard-go/v4/types"
@@ -162,7 +163,6 @@ func KeyCommands() []*cli.Command {
 
 func cmdGenerateMnemonic(ctx context.Context, cmd *cli.Command) error {
 	words := cmd.Int("words")
-	checksumSize := words / 3
 	save := cmd.Bool("save")
 
 	level := AuthSecureChannel
@@ -171,7 +171,7 @@ func cmdGenerateMnemonic(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return runCard(cmd, level, func(kc *keycard.CommandSet, _ *cli.Command) error {
-		mnemonic, keyID, err := doKeycardGenerateMnemonic(kc, checksumSize, save)
+		mnemonic, keyID, err := doKeycardGenerateMnemonic(kc, words, save)
 		if err != nil {
 			return err
 		}
@@ -311,11 +311,15 @@ func cmdExportPrivateKey(ctx context.Context, cmd *cli.Command) error {
 		if internal.IsAppletV4Plus(kc) && cmd.String("path") == "" {
 			return fmt.Errorf("--path is required for applet version 4.0+")
 		}
-		exported, err := doKeycardExportKey(kc, cmd.String("path"), cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
+		path := cmd.String("path")
+		if path != "" && !strings.HasPrefix(path, "m/43'/60'/1581'/") {
+			return fmt.Errorf("export-private-key only supports EIP-1581 paths (m/43'/60'/1581'/...). The card will reject other paths")
+		}
+		exported, err := doKeycardExportKey(kc, path, cmd.Bool("current"), keycard.P2ExportKeyPrivateAndPublic)
 		if err != nil {
 			return err
 		}
-		result := doKeycardExportKeyResult(exported, true, cmd.String("path"))
+		result := doKeycardExportKeyResult(exported, true, path)
 		return PrintResultCLI(cmd, result)
 	})
 }
@@ -353,13 +357,13 @@ func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 	path := cmd.String("path")
-	length := uint8(cmd.Int("length"))
+	length := cmd.Int("length")
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if !internal.IsAppletV4Plus(kc) {
 			return fmt.Errorf("export-bip85 is only available on applet version 4.0+")
 		}
-		key, err := kc.ExportBIP85(path, length)
+		key, err := doKeycardExportBIP85(kc, path, length)
 		if err != nil {
 			return err
 		}

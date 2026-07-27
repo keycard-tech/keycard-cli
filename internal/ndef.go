@@ -3,7 +3,7 @@ package internal
 import (
 	"bytes"
 	"encoding/binary"
-	"html/template"
+	"text/template"
 
 	"github.com/hsanjuan/go-ndef"
 )

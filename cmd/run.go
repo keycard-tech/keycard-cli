@@ -27,7 +27,7 @@ const (
 
 // runCard connects to the card, creates a keycard.CommandSet, selects the
 // applet, runs the auth pipeline up to the requested level, then executes fn.
-func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, cmd *cli.Command) error) error {
+func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, cmd *cli.Command) error) (retErr error) {
 	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
 	if err != nil {
 		return err
@@ -35,7 +35,10 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 	defer cleanup()
 
 	ch := keycardio.NewNormalChannel(card)
-	kc := newCommandSet(ch, cmd)
+	kc, err := newCommandSet(ch, cmd)
+	if err != nil {
+		return err
+	}
 
 	if err := kc.Select(); err != nil {
 		return err
@@ -47,6 +50,10 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 		cmd.String("pairing-password"),
 	)
 
+	// paired tracks whether we paired on V1 so the deferred unpair
+	// only runs when we actually established a pairing.
+	paired := false
+
 	switch level {
 	case AuthNone:
 		// No auth needed
@@ -56,29 +63,57 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 			if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
 				return err
 			}
+			paired = true
+			// Defer unpair immediately after pairing — if any later step
+			// fails, we still clean up the pairing slot.
+			defer func() {
+				if paired && !internal.IsSecureChannelV2(kc) {
+					if err := internal.AutoUnpair(kc); err != nil && retErr == nil {
+						retErr = fmt.Errorf("error unpairing from card: %w", err)
+					}
+				}
+			}()
 		}
 		if err := kc.AutoOpenSecureChannel(); err != nil {
 			return err
 		}
-		defer internal.AutoUnpair(kc)
+		// On V1, the UNPAIR command requires a verified PIN. For
+			// AuthSecureChannel-level commands we normally don't verify the
+			// PIN, but if one is available we verify it so that the deferred
+			// unpair actually succeeds. Without this, every invocation of a
+			// read-only command (get-status, get-data, etc.) permanently
+			// consumes one of the card's 5 pairing slots.
+			if !internal.IsSecureChannelV2(kc) && secrets.Pin != "" {
+				if err := kc.VerifyPIN(secrets.Pin); err != nil {
+					return err
+				}
+			}
 	case AuthPIN:
 		// Full auth: secure channel + PIN verification
-		if !internal.IsSecureChannelV2(kc) && secrets.PairingPass != "" {
-			if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
+			if !internal.IsSecureChannelV2(kc) && secrets.PairingPass != "" {
+				if err := kc.AutoPairWithSecret(keycard.PairingPasswordToSecret(secrets.PairingPass)); err != nil {
+					return err
+				}
+				paired = true
+				// Defer unpair immediately after pairing.
+				defer func() {
+					if paired && !internal.IsSecureChannelV2(kc) {
+						if err := internal.AutoUnpair(kc); err != nil && retErr == nil {
+							retErr = fmt.Errorf("error unpairing from card: %w", err)
+						}
+					}
+				}()
+			}
+			if err := kc.AutoOpenSecureChannel(); err != nil {
 				return err
 			}
-		}
-		if err := kc.AutoOpenSecureChannel(); err != nil {
-			return err
-		}
-		defer internal.AutoUnpair(kc)
 
-		if err := internal.RequirePIN(secrets); err != nil {
-			return err
-		}
-		if err := kc.VerifyPIN(secrets.Pin); err != nil {
-			return err
-		}
+			if err := internal.RequirePIN(secrets); err != nil {
+				return err
+			}
+			if err := kc.VerifyPIN(secrets.Pin); err != nil {
+				return err
+			}
 	}
 
 	return fn(kc, cmd)
@@ -143,7 +178,7 @@ const testCardCA = "025877220AAAE6E54A6F974602D5995C0FE24A3EA7DDABD8644BEC795B9D
 // newCommandSet creates a keycard.CommandSet, optionally using a custom CA
 // public key and/or whitelisted card identity key from CLI flags.
 // Priority: CLI flags > environment variables.
-func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
+func newCommandSet(ch types.Channel, cmd *cli.Command) (*keycard.CommandSet, error) {
 	cardCA := cmd.String("card-ca")
 	whitelistCard := cmd.String("whitelist-card")
 
@@ -171,7 +206,7 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	}
 
 	if cardCA == "" && whitelistCard == "" {
-		return keycard.NewCommandSet(ch)
+		return keycard.NewCommandSet(ch), nil
 	}
 
 	var caPublicKeys [][33]byte
@@ -180,9 +215,9 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	if cardCA != "" {
 		caBytes, err := internal.ParseHex(cardCA)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: invalid card-ca hex: %v\n", err)
+			return nil, fmt.Errorf("invalid card-ca hex: %w", err)
 		} else if len(caBytes) != 33 {
-			fmt.Fprintln(os.Stderr, "warning: card-ca must be 33 bytes (compressed public key)")
+			return nil, fmt.Errorf("card-ca must be 33 bytes (compressed public key), got %d", len(caBytes))
 		} else {
 			var caKey [33]byte
 			copy(caKey[:], caBytes)
@@ -193,9 +228,9 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 	if whitelistCard != "" {
 		wlBytes, err := internal.ParseHex(whitelistCard)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "warning: invalid whitelist-card hex:", err)
+			return nil, fmt.Errorf("invalid whitelist-card hex: %w", err)
 		} else if len(wlBytes) != 33 {
-			fmt.Fprintln(os.Stderr, "warning: whitelist-card must be 33 bytes (compressed public key)")
+			return nil, fmt.Errorf("whitelist-card must be 33 bytes (compressed public key), got %d", len(wlBytes))
 		} else {
 			var wlKey [33]byte
 			copy(wlKey[:], wlBytes)
@@ -203,5 +238,5 @@ func newCommandSet(ch types.Channel, cmd *cli.Command) *keycard.CommandSet {
 		}
 	}
 
-	return keycard.NewCommandSetWithCAs(ch, caPublicKeys, whitelistedCardKeys)
+	return keycard.NewCommandSetWithCAs(ch, caPublicKeys, whitelistedCardKeys), nil
 }

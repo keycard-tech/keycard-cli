@@ -5,7 +5,8 @@ description: >
   applet installation, initialization, pairing, PIN/PUK management, key generation,
   seed loading, data storage, and factory reset. Use only for card setup,
   maintenance, and testing. Covers all CLI commands including destructive
-  operations (factory-reset, delete, remove-key).
+  operations (factory-reset, delete, remove-key). Pinless signing,
+  derive-key, identify, and set/reset-pinless-path are also covered.
 disable-model-invocation: true
 ---
 
@@ -27,8 +28,8 @@ Full administrative operations for [Status Keycard](https://github.com/keycard-t
 
 ## Security
 
-- PIN is managed via `KEYCARD_PIN` env var. The CLI reads it automatically — **prefer the env var over `--pin`**.
-- PUK is managed via `KEYCARD_PUK` env var (only needed for PIN unblocking).
+- PIN is managed via `KEYCARD_PIN` env var. The CLI reads it automatically — **prefer the env var over `--pin`** (command-line flags are visible in `ps` and shell history).
+- PUK is managed via `KEYCARD_PUK` env var. PUK is needed for PIN unblocking **and** for `init` (it's part of the card credentials).
 - Pairing password (V1 cards only) via `KEYCARD_PAIRING_PASSWORD` env var.
 - Outputs mask secrets by default. Use `--show-secrets` only during debugging and never in logs.
 - **Always confirm destructive operations with the user before proceeding.**
@@ -66,10 +67,10 @@ keycard set-name --name "My Card"        # Set display name
 > **These commands only work on blank cards or development builds.** On production cards, GlobalPlatform restrictions prevent installing or deleting applets. To re-provision a production card, use `factory-reset` followed by `init` and `generate-mnemonic --save` (or `load-seed`).
 
 ```bash
-keycard install --applet-file <cap-file> [--keycard-applet] [--ident-applet] [--cash-applet] [--ndef-applet] [--force]
+keycard install -a <cap-file> [--keycard-applet] [--ident-applet] [--cash-applet] [--ndef-applet] [-f] [--ndef <url>]
 ```
 
-Install applets from a CAP file. By default installs keycard + ident applets. Use `--force` to reinstall.
+Install applets from a CAP file. By default installs keycard + ident applets. Use `-f` to force reinstallation. Use `--ndef <url>` to set an NDEF record (supports `{{.cashAddress}}` variable).
 
 Use this when building your own card image or working with a blank/development card.
 
@@ -79,7 +80,7 @@ Use this when building your own card image or working with a blank/development c
 keycard init [--pin <pin>] [--puk <puk>] [--pairing-password <pw>] [--alt-pin <pin>] [--pin-retries <n>] [--puk-retries <n>]
 ```
 
-Initialize the card and generate authentication secrets. If PIN/PUK/pairing-password are omitted, random values are generated.
+Initialize the card and generate authentication secrets. If PIN/PUK are omitted, random values are generated. Pairing password defaults to `KeycardDefaultPairing` if omitted (V1 only). On V2 cards, pairing-password is not used.
 
 ### ⚠️ Destructive Operations
 
@@ -97,7 +98,7 @@ keycard delete --yes                               # Remove all applets (develop
 ```bash
 keycard pair --pairing-password <pw>               # Establish secure channel
 keycard unpair --index <n>               # Remove a pairing
-keycard unpair-all                       # Remove all other pairings
+keycard unpair-all                       # Remove all pairings (including current session)
 ```
 
 V2 cards (applet ≥ 4.0) use certificate-based authentication — pairing is not needed.
@@ -128,29 +129,33 @@ keycard load-lee-seed --mnemonic "word1 ..."       # Load LEE seed (applet ≥ 4
 
 ### Key Export
 
-> **Always include `--path`** on all export commands.
+> **Always include `--path`** on all export commands. On applet ≥ 4.0, `--path` is required; on older applets it is optional (falls back to the current key).
 
 ```bash
 keycard export-public-key --path "m/44'/60'/0'/0/0" 
-keycard export-private-key --path "m/43'/60'/1581'/4'/1469833213'/1555737549"   # EIP1581 path only
+keycard export-private-key --path "m/43'/60'/1581'/4'/1469833213'/1555737549"   # EIP1581 path (enforced by the applet)
 keycard export-extended-key --path "m/44'/60'/0'/0/0" 
 keycard export-lee-key --path "m/44'/60'/0'/0/0"           # applet ≥ 4.0
 keycard export-bip85 --path "m/83696968'/39'/0'/12'/0'" --length 16  # BIP39 12-word English, applet ≥ 4.0
 # Path format: m/83696968'/{app_no}'/{index}' — app 39' = BIP39 mnemonics
 ```
 
+Use `--current` to export the current key on applets < 4.0.
+
 **JSON output** (`export-public-key`): `public_key` (uncompressed, 65 bytes hex with `0x`), `address` (Ethereum address), `path`.  
 **JSON output** (`export-bip85` / `export-lee-key`): `key` (hex with `0x`), `path`.
 
 ### Signing
 
-> **Always include `--path`** on all sign and export commands. Omitting the path relies on the card's current derived key, which is error-prone.
+> **Always include `--path`** on all sign and export commands. On applet ≥ 4.0, `--path` is required; on older applets it is optional (falls back to the current key). Omitting the path relies on the card's current derived key, which is error-prone.
 
 ```bash
 keycard sign --hex "<32-byte-hex>" --path "<hd-path>" --algo <ecdsa|schnorr> 
-keycard sign-message "Hello" --path "<hd-path>" 
-keycard sign-file --file /path/to/file --path "<hd-path>" 
+keycard sign-message "<message>" --path "<hd-path>" --algo <ecdsa|schnorr>
+keycard sign-file --file /path/to/file --path "<hd-path>" --algo <ecdsa|schnorr> 
 ```
+
+**Note:** `--algo schnorr` requires `--path` to be specified.
 
 **JSON output** (all signing commands): `signature_r`, `signature_s`, `signature_v` (hex with `0x` prefix, except `v` which is an integer). `sign-file` also includes `file`.
 
@@ -187,7 +192,7 @@ The `keycard shell` command runs scripts with session state and template variabl
 
 ```bash
 keycard shell -f script.sh --json    # Run script from file, JSONL output
-echo "info" | keycard shell          # Pipe commands from stdin (omit -f)
+echo "keycard-select" | keycard shell  # Pipe commands from stdin (omit -f)
 ```
 
 ### Shell Template Variables
@@ -198,8 +203,8 @@ echo "info" | keycard shell          # Pipe commands from stdin (omit -f)
 | `{{session_pin}}` | PIN from session secrets |
 | `{{session_puk}}` | PUK from session secrets |
 | `{{session_pairing_password}}` | Pairing password from session |
-| `{{session_pairing_key}}` | Current pairing key (hex) |
-| `{{session_pairing_index}}` | Current pairing index |
+| `{{session_pairing_key}}` | Current pairing key (hex with `0x`, V1 only — empty on V2) |
+| `{{session_pairing_index}}` | Current pairing index (V1 only — `0` on V2) |
 
 ### Shell Commands (subset)
 
@@ -216,22 +221,48 @@ keycard-unpair <index>
 keycard-generate-key
 keycard-generate-mnemonic [words]          # Generate mnemonic phrase only
 keycard-save-mnemonic [words]              # Generate mnemonic and load seed
-keycard-load-seed <mnemonic-or-hex>
+keycard-load-seed <mnemonic-or-hex>               # Mnemonic phrase (space-separated words) or hex
 keycard-export-key-public <path>
 keycard-export-key-private <path>
-keycard-sign <hex-hash> <path>
-keycard-sign-message <message> <path>
-keycard-sign-file <file> <path>
+keycard-sign <hex-hash> [path]                   # Path optional (falls back to current key)
+keycard-sign-message <message...> [path]        # Path optional, detected if starts with m/
+keycard-sign-file <file>                         # No path argument
 keycard-remove-key
 keycard-factory-reset
+keycard-generate-mnemonic [words]               # 12 (default), 15, 18, 21, 24
+keycard-save-mnemonic [words]
+keycard-get-data <type>
+keycard-store-data <type> <hex>
+keycard-get-challenge <length>
+keycard-set-ndef <hex>
+keycard-get-name
+keycard-set-name <name>
+keycard-identify [expected-pubkey-hex]
+keycard-derive-key <path>
+keycard-change-pin <new-pin>
+keycard-change-puk <new-puk>
+keycard-unblock-pin <puk> <new-pin>
+keycard-change-pairing-secret <new-pw>
+keycard-set-pinless-path <path>
+keycard-reset-pinless-path
+keycard-sign-pinless <hex>
+keycard-sign-message-pinless <message...>
+keycard-get-status
+keycard-set-pairing <key-hex> <index>
+keycard-unpair-others
+keycard-open-secure-channel
 gp-select [aid]
 gp-open-secure-channel
 gp-delete <aid>
 gp-load <cap-file> <aid>
 gp-install-for-install <pkg-aid> <applet-aid> <instance-aid> [params]
+gp-get-status
+cash-select
+cash-sign <hex>
+ident-select
+ident-load [hex]
+echo <text>
 ```
-
-> **Note:** `keycard-sign`, `keycard-sign-message`, and `keycard-sign-file` require `<path>` as the second argument.
 
 See `_shell-commands-examples/` in the project for full examples.
 
@@ -286,7 +317,7 @@ keycard generate-mnemonic --save
 For development/blank cards where you also need to reinstall applets:
 
 ```bash
-keycard install --applet-file keycard_v4.cap --force --yes
+keycard install -a keycard_v4.cap -f
 keycard load-ident --test
 keycard init
 keycard generate-mnemonic --save
@@ -311,14 +342,15 @@ EOF
 
 | Error | Likely Cause | Fix |
 |-------|-------------|-----|
-| `no readers found` | No USB reader connected or pcscd not running | Check reader, restart pcscd |
-| `card not found` | Card not inserted or reader issue | Reinsert card, try different reader |
-| `card not initialized` | Fresh card, never set up | Run `keycard init` |
-| `applet not installed` | Applets were deleted or card is blank | Run `keycard install` |
-| `PIN verification failed` | Wrong PIN | Check `KEYCARD_PIN`, use `unblock-pin` if blocked |
-| `PIN blocked` | Too many failed attempts | Use `keycard unblock-pin --puk $KEYCARD_PUK` |
-| `no key loaded` | Key was removed or card reset | Run `keycard generate-mnemonic --save` or `load-seed` |
-| `secure channel error` | Pairing issue (V1) or cert mismatch (V2) | Re-pair or check `--card-ca` / `--test-card` |
-| `command not available` | Applet version too old | Update applet via `keycard install` (dev cards only) |
-| `bad response 6982` / `6985` | APDU security error | Card may need a moment to stabilize. Retry after a brief delay. |
-| `--path is required` | Missing path on sign/export | Always include `--path "m/..."` on sign and export commands |
+| `no smartcard reader found` | No USB reader connected or pcscd not running | Check reader, restart pcscd |
+| `reader not found: <name> (available: ...)` | Bad `--reader` name | Check reader name; omit `--reader` to auto-detect |
+| *(blocks indefinitely)* | Reader present but no card inserted | Insert the card. Use a timeout when scripting. |
+| `keycard applet not installed. Run 'keycard install' first` | Card is blank or applets were deleted | Run `keycard install` |
+| `wrong pin. remaining attempts: N` | Wrong PIN | Check `KEYCARD_PIN`; note remaining attempts |
+| `wrong pin. remaining attempts: 0` | PIN blocked (too many failed attempts) | Use `keycard unblock-pin --puk $KEYCARD_PUK` |
+| `cannot open secure channel without pairing` | Pairing issue (V1) | Re-pair or check `--pairing-password` / `KEYCARD_PAIRING_PASSWORD` |
+| `card certificate verification failed: ...` | Cert mismatch (V2) | Check `--card-ca` / `--test-card` |
+| `<cmd> is not available on applet version 4.0+` | Command requires applet < 4.0 | Downgrade command or update card |
+| `<cmd> is only available on applet version 4.0+` | Command requires applet ≥ 4.0 | Update applet via `keycard install` (dev cards only) |
+| `bad response 6982` / `bad response 6985` | APDU security error (`sw=6982`/`sw=6985`) | Card may need a moment to stabilize. Retry after a brief delay. |
+| `--path is required for applet version 4.0+` | Missing path on sign/export | Always include `--path "m/..."` on sign and export commands |

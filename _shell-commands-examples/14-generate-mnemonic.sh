@@ -4,9 +4,9 @@ keycard-pair
 
 keycard-open-secure-channel
 
-keycard-generate-mnemonic 4
-keycard-generate-mnemonic 5
-keycard-generate-mnemonic 8
+keycard-generate-mnemonic 12
+keycard-generate-mnemonic 15
+keycard-generate-mnemonic 24
 
 keycard-verify-pin {{ session_pin }}
 keycard-unpair {{ session_pairing_index }}

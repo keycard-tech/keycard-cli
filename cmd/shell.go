@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
+	"text/template"
 	"io"
 	"os"
 	"regexp"
@@ -85,7 +85,10 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 
 func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bool, cmd *cli.Command, secrets *keycard.Secrets) error {
 	ch := keycardio.NewNormalChannel(card)
-	kc := newCommandSet(ch, cmd)
+	kc, err := newCommandSet(ch, cmd)
+		if err != nil {
+			return err
+		}
 	cashKC := keycard.NewCashCommandSet(ch)
 	identKC := keycard.NewIdentCommandSet(ch)
 	gp := globalplatform.NewCommandSet(ch)
@@ -165,6 +168,22 @@ func (s *shellRunner) evalLine(rawLine string) error {
 	reg := regexp.MustCompile("\\s+")
 	parts := reg.Split(line, -1)
 
+	// Filter out empty tokens that result from template expansion with
+	// unset variables (e.g. {{session_pin}} when PIN is not set).
+	// Without this, empty tokens pass arity checks and can send blank
+	// values — burning real PIN retries on hardware.
+	filtered := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			filtered = append(filtered, p)
+		}
+	}
+	parts = filtered
+
+	if len(parts) == 0 {
+		return nil
+	}
+
 	// Handle echo specially (built-in, not in registry)
 	if parts[0] == "echo" {
 		msg := strings.Join(parts[1:], " ")
@@ -196,9 +215,13 @@ func (s *shellRunner) evalLine(rawLine string) error {
 		}
 		if output != nil {
 			if s.jsonOutput {
+				result := interface{}(output.Result)
+				if !s.showSecrets {
+					result = maskResultForJSON(output.Result)
+				}
 				line := map[string]interface{}{
 					"command": parts[0],
-					"result":  maskResultForJSON(output.Result, s.showSecrets),
+					"result":  result,
 				}
 				data, _ := json.Marshal(line)
 				fmt.Fprintln(os.Stdout, string(data))
@@ -230,7 +253,7 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 				return "", errors.New("pairing key not known")
 			}
 			key := pairing.Key()
-			return fmt.Sprintf("%x", key[:]), nil
+			return fmt.Sprintf("0x%x", key[:]), nil
 		},
 		"session_pairing_index": func() (string, error) {
 			if internal.IsSecureChannelV2(s.ctx.kc) {
@@ -276,35 +299,4 @@ func (s *shellRunner) evalTemplate(text string) (string, error) {
 	return buf.String(), nil
 }
 
-// maskResultForJSON returns a copy of r with secret fields masked if showSecrets is false.
-func maskResultForJSON(r Result, showSecrets bool) interface{} {
-	if showSecrets {
-		return r
-	}
-	switch v := r.(type) {
-	case InitResult:
-		return InitResult{
-			Pin:             "***",
-			Puk:             "***",
-			PairingPassword: "***",
-		}
-	case SetSecretsResult:
-		return SetSecretsResult{
-			Pin:             "***",
-			Puk:             "***",
-			PairingPassword: "***",
-		}
-	case SetPairingResult:
-		return SetPairingResult{
-			PairingKey:   "***",
-			PairingIndex: v.PairingIndex,
-		}
-	case PairingResult:
-		return PairingResult{
-			PairingKey:   "***",
-			PairingIndex: v.PairingIndex,
-		}
-	default:
-		return r
-	}
-}
+

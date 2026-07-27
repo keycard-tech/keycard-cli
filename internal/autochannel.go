@@ -58,17 +58,14 @@ func AutoAuth(cs *keycard.CommandSet, secrets *Secrets) error {
 	return nil
 }
 
-// AutoUnpair unpairs if V1 (no-op for V2).
-func AutoUnpair(cs *keycard.CommandSet) {
+func AutoUnpair(cs *keycard.CommandSet) error {
 	if IsSecureChannelV2(cs) {
-		return
+		return nil
 	}
 	pairing := cs.Pairing()
 	if pairing == nil {
-		return
+		return nil
 	}
 	log.Info("auto-unpairing", "index", pairing.Index())
-	if err := cs.Unpair(pairing.Index()); err != nil {
-		log.Error("error unpairing", "error", err)
-	}
+	return cs.Unpair(pairing.Index())
 }
