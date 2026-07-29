@@ -123,7 +123,10 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 	defer cleanup()
 
 	ch := keycardio.NewNormalChannel(card)
-	kc := keycard.NewCommandSet(ch)
+	kc, err := newCommandSet(ch, cmd)
+	if err != nil {
+		return err
+	}
 
 	var selectErr error
 	if selectErr = kc.Select(); selectErr != nil {
