@@ -51,7 +51,7 @@ func DataCommands() []*cli.Command {
 			Name:  "get-challenge",
 			Usage: "Get a random challenge from the card (applet >= 4.0 only)",
 			Flags: []cli.Flag{
-				&cli.IntFlag{
+				&cli.UintFlag{
 					Name:     "length",
 					Usage:    "Challenge length in bytes",
 					Required: true,
@@ -133,7 +133,7 @@ func cmdStoreData(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdGetChallenge(ctx context.Context, cmd *cli.Command) error {
-	length := cmd.Int("length")
+	length := cmd.Uint("length")
 
 	return runCard(cmd, AuthSecureChannel, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if !internal.IsAppletV4Plus(kc) {

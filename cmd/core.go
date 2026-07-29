@@ -773,11 +773,11 @@ func doKeycardGenerateKey(kc *keycard.CommandSet) ([]byte, error) {
 // (corresponding to checksumSize 4, 5, 6, 7, 8 respectively).
 // When save is true, the mnemonic's binary seed is also loaded onto the card
 // and the key ID is returned.
-func doKeycardGenerateMnemonic(kc *keycard.CommandSet, words int, save bool) (*types.Mnemonic, []byte, error) {
+func doKeycardGenerateMnemonic(kc *keycard.CommandSet, words uint, save bool) (*types.Mnemonic, []byte, error) {
 	if err := validateWordCount(words); err != nil {
 		return nil, nil, err
 	}
-	checksumSize := words / 3
+	checksumSize := int(words / 3)
 	indexes, err := kc.GenerateMnemonic(checksumSize)
 	if err != nil {
 		return nil, nil, err
@@ -802,7 +802,7 @@ func doKeycardGenerateMnemonic(kc *keycard.CommandSet, words int, save bool) (*t
 }
 
 // validateWordCount validates that the word count is a valid BIP39 size.
-func validateWordCount(words int) error {
+func validateWordCount(words uint) error {
 	switch words {
 	case 12, 15, 18, 21, 24:
 		return nil
@@ -813,9 +813,9 @@ func validateWordCount(words int) error {
 
 // doKeycardExportBIP85 exports a BIP85 derived key with validated path and length.
 // The path must start with m/83696968' (the BIP85 commitment prefix).
-func doKeycardExportBIP85(kc *keycard.CommandSet, path string, length int) ([]byte, error) {
-	if length < 1 || length > 255 {
-		return nil, fmt.Errorf("--length must be between 1 and 255 bytes, got %d", length)
+func doKeycardExportBIP85(kc *keycard.CommandSet, path string, length uint) ([]byte, error) {
+	if length < 1 || length > 64 {
+		return nil, fmt.Errorf("--length must be between 1 and 64 bytes, got %d", length)
 	}
 	if !strings.HasPrefix(path, "m/83696968'") {
 		return nil, fmt.Errorf("invalid BIP85 path: must start with m/83696968'")
@@ -824,10 +824,10 @@ func doKeycardExportBIP85(kc *keycard.CommandSet, path string, length int) ([]by
 }
 
 // doKeycardGetChallenge retrieves a random challenge from the card with
-// validated length (1-255 bytes).
-func doKeycardGetChallenge(kc *keycard.CommandSet, length int) ([]byte, error) {
-	if length < 1 || length > 255 {
-		return nil, fmt.Errorf("--length must be between 1 and 255 bytes, got %d", length)
+// validated length (1-245 bytes).
+func doKeycardGetChallenge(kc *keycard.CommandSet, length uint) ([]byte, error) {
+	if length < 1 || length > 245 {
+		return nil, fmt.Errorf("--length must be between 1 and 245 bytes, got %d", length)
 	}
 	return kc.GetChallenge(uint8(length))
 }

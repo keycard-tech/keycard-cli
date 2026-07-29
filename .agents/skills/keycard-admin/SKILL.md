@@ -352,7 +352,7 @@ EOF
 | *(blocks indefinitely)* | Reader present but no card inserted | Insert the card. Use a timeout when scripting. |
 | `keycard applet not installed. Run 'keycard install' first` | Card is blank or applets were deleted | Run `keycard install` |
 | `wrong pin. remaining attempts: N` | Wrong PIN | Check `KEYCARD_PIN`; note remaining attempts |
-| `wrong pin. remaining attempts: 0` | PIN blocked (too many failed attempts) | Use `keycard unblock-pin --puk $KEYCARD_PUK` |
+| `wrong pin. remaining attempts: 0` | PIN blocked (too many failed attempts) | Use `keycard unblock-pin` (set all secrets through env) |
 | `cannot open secure channel without pairing` | Pairing issue (V1) | Re-pair or check `--pairing-password` / `KEYCARD_PAIRING_PASSWORD` |
 | `card certificate verification failed: ...` | Cert mismatch (V2) | Check `--card-ca` / `--test-card` |
 | `<cmd> is not available on applet version 4.0+` | Command requires applet < 4.0 | Downgrade command or update card |

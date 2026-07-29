@@ -203,8 +203,8 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			cmd.String("pairing-password"),
 		)
 
-		pinRetries := cmd.Int("pin-retries")
-		pukRetries := cmd.Int("puk-retries")
+		pinRetries := cmd.Uint("pin-retries")
+		pukRetries := cmd.Uint("puk-retries")
 		if pinRetries < 1 || pinRetries > 10 {
 			return fmt.Errorf("--pin-retries must be between 1 and 10, got %d", pinRetries)
 		}
@@ -222,9 +222,6 @@ func cmdInit(ctx context.Context, cmd *cli.Command) error {
 			}
 			if secrets.Puk == "" {
 				secrets.Puk = genSecrets.Puk()
-			}
-			if secrets.PairingPass == "" {
-				secrets.PairingPass = genSecrets.PairingPass()
 			}
 		}
 

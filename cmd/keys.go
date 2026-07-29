@@ -20,7 +20,7 @@ func KeyCommands() []*cli.Command {
 			Name:  "generate-mnemonic",
 			Usage: "Generate a mnemonic phrase using the card's RNG",
 			Flags: []cli.Flag{
-				&cli.IntFlag{
+				&cli.UintFlag{
 					Name:  "words",
 					Usage: "Number of words (12, 15, 18, 21, or 24)",
 					Value: 12,
@@ -150,7 +150,7 @@ func KeyCommands() []*cli.Command {
 					Usage:    "Derivation path",
 					Required: true,
 				},
-				&cli.IntFlag{
+				&cli.UintFlag{
 					Name:  "length",
 					Usage: "Key length in bytes",
 					Value: 64,
@@ -162,7 +162,7 @@ func KeyCommands() []*cli.Command {
 }
 
 func cmdGenerateMnemonic(ctx context.Context, cmd *cli.Command) error {
-	words := cmd.Int("words")
+	words := cmd.Uint("words")
 	save := cmd.Bool("save")
 
 	level := AuthSecureChannel
@@ -177,7 +177,7 @@ func cmdGenerateMnemonic(ctx context.Context, cmd *cli.Command) error {
 		}
 		result := GenerateMnemonicResult{
 			Phrase: mnemonic.ToPhrase(),
-			Words:  words,
+			Words:  int(words),
 		}
 		if keyID != nil {
 			result.KeyID = "0x" + hex.EncodeToString(keyID)
@@ -357,7 +357,7 @@ func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 
 func cmdExportBIP85(ctx context.Context, cmd *cli.Command) error {
 	path := cmd.String("path")
-	length := cmd.Int("length")
+	length := cmd.Uint("length")
 
 	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
 		if !internal.IsAppletV4Plus(kc) {

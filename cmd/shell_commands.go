@@ -676,7 +676,7 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 			return nil, err
 		}
 	}
-	key, err := doKeycardExportBIP85(ctx.kc, args[0], int(length))
+	key, err := doKeycardExportBIP85(ctx.kc, args[0], uint(length))
 	if err != nil {
 		return nil, err
 	}
@@ -835,7 +835,7 @@ func shellKeycardGenerateMnemonicSave(ctx *shellCtx, args []string, save bool) (
 			return nil, err
 		}
 	}
-	mnemonic, keyID, err := doKeycardGenerateMnemonic(ctx.kc, words, save)
+	mnemonic, keyID, err := doKeycardGenerateMnemonic(ctx.kc, uint(words), save)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +903,7 @@ func shellKeycardGetChallenge(ctx *shellCtx, args []string) (*shellOutput, error
 	if err != nil {
 		return nil, err
 	}
-	challenge, err := doKeycardGetChallenge(ctx.kc, int(length))
+	challenge, err := doKeycardGetChallenge(ctx.kc, uint(length))
 	if err != nil {
 		return nil, err
 	}

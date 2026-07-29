@@ -42,7 +42,7 @@ keycard info --json
 
 Returns card applet version, initialization status, capabilities, and certificate info. Use this first to confirm the card is present and operational.
 
-> **Note:** Most fields use `omitempty` — they are **absent** (not empty) when unset. Notably, `pin_retries` disappears when 0 (i.e. a blocked card). On V1 cards, `instance_uid` and `available_slots` are present but undocumented here.
+> **Note:** Some fields use `omitempty` — they are **absent** (not empty) when unset.  On V1 cards, `instance_uid` and `available_slots` are present but undocumented here.
 
 **Output:**
 
@@ -237,7 +237,7 @@ keycard export-bip85 --path "<bip85-path>" --length <bytes> --json
 
 Derive entropy using [BIP85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki) from the card's master seed. The output is raw key material (hex) that can be fed into any wallet or key-generation scheme.
 
-`--path` is a BIP85 derivation path of the form `m/83696968'/{app_no}'/{index}'`. `--length` controls output size in bytes (default 64). Must be between 1 and 255. Values above 255 wrap (uint8).
+`--path` is a BIP85 derivation path of the form `m/83696968'/{app_no}'/{index}'`. `--length` controls output size in bytes (default 64). Must be between 1 and 64.
 
 **Output:**
 

@@ -29,7 +29,7 @@ func PairingCommands() []*cli.Command {
 			Name:  "unpair",
 			Usage: "Unpair from the card (applet < 4.0 only)",
 			Flags: []cli.Flag{
-				&cli.IntFlag{
+				&cli.UintFlag{
 					Name:     "index",
 					Usage:    "Pairing index to unpair",
 					Required: true,
@@ -76,7 +76,7 @@ func cmdUnpair(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("unpair is not available on applet version 4.0+")
 		}
 
-		index := uint8(cmd.Int("index"))
+		index := uint8(cmd.Uint("index"))
 		if err := kc.Unpair(index); err != nil {
 			return err
 		}

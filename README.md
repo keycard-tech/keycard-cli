@@ -72,7 +72,7 @@ The following flags are available on all commands:
 | `KEYCARD_NEW_PUK` | New PUK for `change-puk` |
 | `KEYCARD_NEW_PAIRING_PASSWORD` | New pairing password for `change-pairing-password` |
 | `KEYCARD_CARD_CA` | CA public key for V2 certificate verification |
-| `KEYCARD_TEST_CARD` | Use test card CA (set to any non-zero/false value) |
+| `KEYCARD_TEST_CARD` | Use test card CA (boolean) |
 | `KEYCARD_WHITELIST_CARD` | Whitelisted card identity public key |
 
 ## CLI Commands
