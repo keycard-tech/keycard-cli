@@ -277,6 +277,14 @@ Export a BIP85 derived key (applet >= 4.0 only).
 keycard export-bip85 --path "m/83696968'/39'/0'/12'/0'" --length 16 --pin YOUR_PIN
 ```
 
+#### `ecdh`
+
+Compute an ECDH shared secret between the key derived at the given path and a peer public key (applet >= 4.0 only).
+
+```bash
+keycard ecdh --peer-key "0x04..." --path "m/44'/1237'/0'/0/0" --pin YOUR_PIN
+```
+
 ### Signing
 
 #### `sign`
@@ -286,7 +294,10 @@ Sign a 32-byte hash.
 ```bash
 keycard sign --hex "0x..." --path "m/44'/60'/0'/0/0" --algo ecdsa --pin YOUR_PIN
 keycard sign --hex "0x..." --path "m/44'/60'/0'/0/0" --algo schnorr --pin YOUR_PIN
+keycard sign --hex "0x..." --path "m/44'/60'/0'/0/0" --algo schnorr --tweak "0x..." --pin YOUR_PIN
 ```
+
+The `--tweak` flag (32 bytes hex) is only valid when `--algo schnorr` is used and requires `--path`.
 
 #### `sign-message`
 
@@ -294,6 +305,7 @@ Sign a message using the Ethereum Signed Message format.
 
 ```bash
 keycard sign-message "Hello, Keycard!" --path "m/44'/60'/0'/0/0" --pin YOUR_PIN
+keycard sign-message "Hello, Keycard!" --path "m/44'/60'/0'/0/0" --algo schnorr --tweak "0x..." --pin YOUR_PIN
 ```
 
 #### `sign-file`
@@ -302,22 +314,7 @@ Sign a file (hashes the file content with Keccak256).
 
 ```bash
 keycard sign-file --file /path/to/file --path "m/44'/60'/0'/0/0" --pin $KEYCARD_PIN
-```
-
-#### `sign-pinless`
-
-Sign without PIN verification (applet < 4.0 only). Requires a pinless signing path to be set.
-
-```bash
-keycard sign-pinless --hex "0x..."
-```
-
-#### `sign-message-pinless`
-
-Sign a message without PIN (applet < 4.0 only). Requires a pinless signing path to be set.
-
-```bash
-keycard sign-message-pinless "Hello" --pin $KEYCARD_PIN
+keycard sign-file --file /path/to/file --path "m/44'/60'/0'/0/0" --algo schnorr --tweak "0x..." --pin $KEYCARD_PIN
 ```
 
 #### `set-pinless-path` / `reset-pinless-path`
@@ -329,12 +326,28 @@ keycard set-pinless-path --path "m/44'/60'/0'/0/0" --pin $KEYCARD_PIN
 keycard reset-pinless-path --pin $KEYCARD_PIN
 ```
 
+#### `sign-pinless`
+
+Sign without PIN verification (applet < 4.0 only). Requires the pinless signing path to have been set.
+
+```bash
+keycard sign-pinless --hex "0x..."
+```
+
+#### `sign-message-pinless`
+
+Sign a message without PIN (applet < 4.0 only). Requires the pinless signing path to have been set.
+
+```bash
+keycard sign-message-pinless "Hello"
+```
+
 #### `identify`
 
 Identify the card (applet < 4.0 only).
 
 ```bash
-keycard identify --pin $KEYCARD_PIN
+keycard identify
 ```
 
 ### Credentials

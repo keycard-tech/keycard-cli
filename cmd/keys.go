@@ -158,6 +158,23 @@ func KeyCommands() []*cli.Command {
 			},
 			Action: cmdExportBIP85,
 		},
+		{
+			Name:  "ecdh",
+			Usage: "Compute an ECDH shared secret with a peer public key (applet >= 4.0 only)",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "peer-key",
+					Usage:    "Peer public key (hex, 65 bytes uncompressed 0x04 || X || Y)",
+					Required: true,
+				},
+				&cli.StringFlag{
+					Name:     "path",
+					Usage:    "Derivation path (must be absolute, e.g. m/44'/1237'/0'/0/0)",
+					Required: true,
+				},
+			},
+			Action: cmdECDH,
+		},
 	}
 }
 
@@ -351,6 +368,29 @@ func cmdExportLEEKey(ctx context.Context, cmd *cli.Command) error {
 		return PrintResultCLI(cmd, LEEKeyResult{
 			Key:  "0x" + hex.EncodeToString(key),
 			Path: path,
+		})
+	})
+}
+
+func cmdECDH(ctx context.Context, cmd *cli.Command) error {
+	peerKey, err := internal.ParseHex(cmd.String("peer-key"))
+	if err != nil {
+		return fmt.Errorf("invalid peer key: %w", err)
+	}
+	path := cmd.String("path")
+
+	return runCard(cmd, AuthPIN, func(kc *keycard.CommandSet, _ *cli.Command) error {
+		if !internal.IsAppletV4Plus(kc) {
+			return fmt.Errorf("ecdh is only available on applet version 4.0+")
+		}
+		secret, err := doKeycardECDH(kc, peerKey, path)
+		if err != nil {
+			return err
+		}
+		return PrintResultCLI(cmd, ECDHResult{
+			SharedSecret: "0x" + hex.EncodeToString(secret),
+			PeerKey:      "0x" + hex.EncodeToString(peerKey),
+			Path:         path,
 		})
 	})
 }

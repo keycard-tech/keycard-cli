@@ -68,6 +68,7 @@ func RegisterShellCommands() []shellCommand {
 		{name: "keycard-export-extended-key", usage: "Export the extended key (public key + chain code)", handler: shellKeycardExportExtendedKey},
 		{name: "keycard-export-lee-key", usage: "Export a LEE key at the given path (applet >= 4.0 only)", handler: shellKeycardExportLEEKey},
 		{name: "keycard-export-bip85", usage: "Export a BIP85 derived key (applet >= 4.0 only)", handler: shellKeycardExportBIP85},
+		{name: "keycard-ecdh", usage: "Compute an ECDH shared secret with a peer public key (applet >= 4.0 only)", handler: shellKeycardECDH},
 
 		// Signing
 		{name: "keycard-sign", usage: "Sign a 32-byte hash (optional derivation path)", handler: shellKeycardSign},
@@ -683,6 +684,28 @@ func shellKeycardExportBIP85(ctx *shellCtx, args []string) (*shellOutput, error)
 	return newShellOutput(BIP85KeyResult{
 		Key:  "0x" + hex.EncodeToString(key),
 		Path: args[0],
+	}, ctx.showSecrets), nil
+}
+
+func shellKeycardECDH(ctx *shellCtx, args []string) (*shellOutput, error) {
+	if !internal.IsAppletV4Plus(ctx.kc) {
+		return nil, errors.New("ecdh is only available on applet version 4.0+")
+	}
+	if err := requireArgs(args, 2); err != nil {
+		return nil, err
+	}
+	peerKey, err := parseHexShell(args[0])
+	if err != nil {
+		return nil, err
+	}
+	secret, err := doKeycardECDH(ctx.kc, peerKey, args[1])
+	if err != nil {
+		return nil, err
+	}
+	return newShellOutput(ECDHResult{
+		SharedSecret: "0x" + hex.EncodeToString(secret),
+		PeerKey:      "0x" + hex.EncodeToString(peerKey),
+		Path:         args[1],
 	}, ctx.showSecrets), nil
 }
 

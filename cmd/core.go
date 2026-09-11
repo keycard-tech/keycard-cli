@@ -118,6 +118,12 @@ func maskResultForJSON(r Result) interface{} {
 			PairingKey:   "***",
 			PairingIndex: v.PairingIndex,
 		}
+	case ECDHResult:
+		return ECDHResult{
+			SharedSecret: "***",
+			PeerKey:      v.PeerKey,
+			Path:         v.Path,
+		}
 	default:
 		return r
 	}
@@ -405,6 +411,25 @@ type BIP85KeyResult struct {
 
 func (r BIP85KeyResult) Format(_ bool) string {
 	return fmt.Sprintf("BIP85 key: %s\n", r.Key)
+}
+
+// ECDHResult — "ecdh"
+type ECDHResult struct {
+	SharedSecret string `json:"shared_secret"`
+	PeerKey      string `json:"peer_key"`
+	Path         string `json:"path"`
+}
+
+func (r ECDHResult) Format(showSecrets bool) string {
+	var w strings.Builder
+	w.WriteString(fmt.Sprintf("Path: %s\n", r.Path))
+	w.WriteString(fmt.Sprintf("Peer key: %s\n", r.PeerKey))
+	if showSecrets {
+		w.WriteString(fmt.Sprintf("Shared secret: %s\n", r.SharedSecret))
+	} else {
+		w.WriteString("Shared secret: ***\n")
+	}
+	return w.String()
 }
 
 // ExportedKeyResult holds exported key data.
@@ -891,6 +916,18 @@ func doKeycardSignWithPath(kc *keycard.CommandSet, data []byte, path string) (*t
 // doKeycardSignWithPathAndAlgo signs data with a specific algorithm.
 func doKeycardSignWithPathAndAlgo(kc *keycard.CommandSet, data []byte, path string, p2 uint8) (*types.Signature, error) {
 	return kc.SignWithPathAndAlgo(data, path, p2)
+}
+
+// doKeycardSignBIP341Schnorr signs a 32-byte hash using BIP341 Schnorr with
+// a 32-byte tweak, deriving the key at the given path.
+func doKeycardSignBIP341Schnorr(kc *keycard.CommandSet, data, tweak []byte, path string) (*types.Signature, error) {
+	return kc.SignBIP341Schnorr(data, tweak, path)
+}
+
+// doKeycardECDH computes an ECDH shared secret between the key derived at the
+// given path and a peer public key (uncompressed secp256k1 point).
+func doKeycardECDH(kc *keycard.CommandSet, peerPublicKey []byte, path string) ([]byte, error) {
+	return kc.ECDH(peerPublicKey, path)
 }
 
 // doKeycardSignPinless signs without PIN verification (applet < 4.0 only).

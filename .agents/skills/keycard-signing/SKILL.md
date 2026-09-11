@@ -119,6 +119,7 @@ Sign a 32-byte hash. The hash must be provided as hex (with or without `0x` pref
 
 - `--path` — HD derivation path, e.g. `m/44'/60'/0'/0/0` (Ethereum account 0). **Required on applet ≥ 4.0**; on older applets it is optional and falls back to the current key. Always pass it explicitly anyway.
 - `--algo` — `ecdsa` (default) or `schnorr`
+- `--tweak` — optional 32-byte hex BIP341 tweak. **Only valid with `--algo schnorr`** and requires `--path`.
 
 **Output:**
 
@@ -130,6 +131,14 @@ Sign a 32-byte hash. The hash must be provided as hex (with or without `0x` pref
 }
 ```
 
+Schnorr with a tweak:
+
+```bash
+keycard sign --hex "<32-byte-hex>" --path "m/44'/60'/0'/0/0" --algo schnorr --tweak "0x<32-byte-hex>" --json
+```
+
+The tweak is appended to the hash before signing (hash || tweak). It must be exactly 32 bytes.
+
 ### Sign a Message (Ethereum Signed Message format)
 
 ```bash
@@ -138,7 +147,7 @@ keycard sign-message "<message text>" --path "<hd-path>" --json
 
 Signs a human-readable message using the Ethereum Signed Message hashing format (`\x19Ethereum Signed Message...\n<len><message>`).
 
-Supports `--algo` flag (`ecdsa` default, `schnorr`). **`--algo schnorr` requires `--path` to be specified.**
+Supports `--algo` flag (`ecdsa` default, `schnorr`). **`--algo schnorr` requires `--path` to be specified.** Also supports `--tweak` (32-byte hex, schnorr only).
 
 > **Gotcha:** If the message text starts with `0x` and is valid hex, it is hex-decoded and the **raw bytes** are signed (not the literal string). For example, `keycard sign-message "0x4142"` signs the 2 bytes `0x41 0x42` (i.e. `AB`), not the 6-character string `0x4142`.
 
@@ -160,7 +169,7 @@ keycard sign-file --file <path> --path "<hd-path>" --json
 
 Hashes the file content with Keccak256 and signs the resulting hash.
 
-Supports `--algo` flag (`ecdsa` default, `schnorr`). Use `--path` with `--algo schnorr`.
+Supports `--algo` flag (`ecdsa` default, `schnorr`). Use `--path` with `--algo schnorr`. Also supports `--tweak` (32-byte hex, schnorr only).
 
 **Output:**
 
@@ -263,6 +272,39 @@ BIP39 path components:
 - `{words}`: `12'` (128 bits), `15'` (160 bits), `18'` (192 bits), `21'` (224 bits), `24'` (256 bits)
 - `{index}`: account index (`0'`, `1'`, etc.)
 
+### Compute an ECDH Shared Secret (applet ≥ 4.0)
+
+```bash
+keycard ecdh --peer-key "<65-byte-uncompressed-pubkey-hex>" --path "<hd-path>" --json
+```
+
+Computes an ECDH shared secret between the key derived at `--path` and a peer public key. The shared secret is the raw x-coordinate of the resulting point (32 bytes) — run it through a KDF host-side (e.g. NIP-44 uses HKDF-extract with salt `"nip44-v2"`).
+
+- `--peer-key` — peer public key as a **65-byte uncompressed secp256k1 point** (`0x04 || X || Y`). Required.
+- `--path` — derivation path. Must be an **absolute master-derived path**. The applet only permits the NIP-44 (`m/44'/1237'`) and EIP-1581 (`m/43'/60'/1581'`) prefixes at a depth of at least 5 components. Required.
+
+**Output:**
+
+```json
+{
+  "shared_secret": "***",
+  "peer_key": "0x0437b0bb...",
+  "path": "m/44'/1237'/0'/0/0"
+}
+```
+
+The `shared_secret` is a secret — it is masked as `***` unless `--show-secrets` is set (both text and JSON output).
+
+Example (NIP-44 path):
+
+```bash
+keycard ecdh --peer-key "0x04..." --path "m/44'/1237'/0'/0/0" --show-secrets --json
+```
+
+> **Note:** ECDH is only available on applet ≥ 4.0. Use `keycard info` to confirm the applet version.
+
+In the interactive shell, use `keycard-ecdh <peer-key-hex> <path>`. The shell requires an explicit sequence before it — `keycard-open-secure-channel` and `keycard-verify-pin <pin>` must run first (unlike the standalone CLI commands, which handle secure channel and PIN automatically).
+
 ## Common Workflows
 
 ### Sign an Ethereum Transaction Hash
@@ -347,6 +389,7 @@ All commands with `--json` return a single JSON object. Key fields vary by comma
 | `export-extended-key` | `public_key`, `chain_code`, `address`, `path` |
 | `export-lee-key` | `key` (hex with `0x`), `path` |
 | `export-bip85` | `key` (hex with `0x`), `path` |
+| `ecdh` | `shared_secret` (hex with `0x`, masked as `***` unless `--show-secrets`), `peer_key`, `path` |
 
 All hex values include the `0x` prefix, except `certificate` which is raw hex without a prefix.
 

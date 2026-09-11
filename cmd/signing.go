@@ -35,6 +35,10 @@ func SigningCommands() []*cli.Command {
 					Usage: "Signature algorithm: ecdsa (default) or schnorr",
 					Value: "ecdsa",
 				},
+				&cli.StringFlag{
+					Name:  "tweak",
+					Usage: "BIP341 tweak (32 bytes hex) when using schnorr",
+				},
 			},
 			Action: cmdSign,
 		},
@@ -50,6 +54,10 @@ func SigningCommands() []*cli.Command {
 					Name:  "algo",
 					Usage: "Signature algorithm: ecdsa (default) or schnorr",
 					Value: "ecdsa",
+				},
+				&cli.StringFlag{
+					Name:  "tweak",
+					Usage: "BIP341 tweak (32 bytes hex) when using schnorr",
 				},
 			},
 			Action: cmdSignMessage,
@@ -71,6 +79,10 @@ func SigningCommands() []*cli.Command {
 					Name:  "algo",
 					Usage: "Signature algorithm: ecdsa (default) or schnorr",
 					Value: "ecdsa",
+				},
+				&cli.StringFlag{
+					Name:  "tweak",
+					Usage: "BIP341 tweak (32 bytes hex) when using schnorr",
 				},
 			},
 			Action: cmdSignFile,
@@ -103,7 +115,7 @@ func cmdSign(ctx context.Context, cmd *cli.Command) error {
 	if len(data) != 32 {
 		return fmt.Errorf("data to sign must be 32 bytes, got %d", len(data))
 	}
-	return doSignCLI(cmd, data, cmd.String("path"), cmd.String("algo"), false)
+	return doSignCLI(cmd, data, cmd.String("path"), cmd.String("algo"), false, cmd.String("tweak"))
 }
 
 func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
@@ -112,7 +124,7 @@ func cmdSignMessage(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("message argument required")
 	}
 	hash := hashEthereumMessage(args.First())
-	return doSignCLI(cmd, hash, cmd.String("path"), cmd.String("algo"), false)
+	return doSignCLI(cmd, hash, cmd.String("path"), cmd.String("algo"), false, cmd.String("tweak"))
 }
 
 func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
@@ -122,7 +134,7 @@ func cmdSignFile(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("error reading file: %w", err)
 	}
 	hash := crypto.Keccak256(content)
-	return doSignCLIWithFile(cmd, hash, cmd.String("path"), cmd.String("algo"), false, filePath)
+	return doSignCLIWithFile(cmd, hash, cmd.String("path"), cmd.String("algo"), false, filePath, cmd.String("tweak"))
 }
 
 func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
@@ -133,7 +145,7 @@ func cmdSignPinless(ctx context.Context, cmd *cli.Command) error {
 	if len(data) != 32 {
 		return fmt.Errorf("data to sign must be 32 bytes, got %d", len(data))
 	}
-	return doSignCLI(cmd, data, "", "ecdsa", true)
+	return doSignCLI(cmd, data, "", "ecdsa", true, "")
 }
 
 func cmdSignMessagePinless(ctx context.Context, cmd *cli.Command) error {
@@ -142,10 +154,14 @@ func cmdSignMessagePinless(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("message argument required")
 	}
 	hash := hashEthereumMessage(args.First())
-	return doSignCLI(cmd, hash, "", "ecdsa", true)
+	return doSignCLI(cmd, hash, "", "ecdsa", true, "")
 }
 
-func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) error {
+func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool, tweakHex string) error {
+	tweak, err := parseTweak(tweakHex)
+	if err != nil {
+		return err
+	}
 	authLevel := AuthPIN
 	if pinless {
 		authLevel = AuthNone
@@ -154,7 +170,7 @@ func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) e
 		if internal.IsAppletV4Plus(kc) && path == "" {
 			return fmt.Errorf("--path is required for applet version 4.0+")
 		}
-		sig, err := signWithParams(kc, data, path, algo, pinless)
+		sig, err := signWithParams(kc, data, path, algo, tweak, pinless)
 		if err != nil {
 			return err
 		}
@@ -162,7 +178,11 @@ func doSignCLI(cmd *cli.Command, data []byte, path, algo string, pinless bool) e
 	})
 }
 
-func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless bool, file string) error {
+func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless bool, file, tweakHex string) error {
+	tweak, err := parseTweak(tweakHex)
+	if err != nil {
+		return err
+	}
 	authLevel := AuthPIN
 	if pinless {
 		authLevel = AuthNone
@@ -171,7 +191,7 @@ func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless
 		if internal.IsAppletV4Plus(kc) && path == "" {
 			return fmt.Errorf("--path is required for applet version 4.0+")
 		}
-		sig, err := signWithParams(kc, data, path, algo, pinless)
+		sig, err := signWithParams(kc, data, path, algo, tweak, pinless)
 		if err != nil {
 			return err
 		}
@@ -181,20 +201,46 @@ func doSignCLIWithFile(cmd *cli.Command, data []byte, path, algo string, pinless
 	})
 }
 
+// parseTweak parses the optional --tweak flag (hex, 32 bytes) for schnorr signing.
+// An empty string returns nil (no tweak).
+func parseTweak(tweakHex string) ([]byte, error) {
+	if tweakHex == "" {
+		return nil, nil
+	}
+	tweak, err := internal.ParseHex(tweakHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tweak: %w", err)
+	}
+	if len(tweak) != 32 {
+		return nil, fmt.Errorf("tweak must be 32 bytes, got %d", len(tweak))
+	}
+	return tweak, nil
+}
+
 // signWithParams performs signing with the given parameters using core functions.
-func signWithParams(kc *keycard.CommandSet, data []byte, path, algo string, pinless bool) (*types.Signature, error) {
+func signWithParams(kc *keycard.CommandSet, data []byte, path, algo string, tweak []byte, pinless bool) (*types.Signature, error) {
 	if pinless {
 		return doKeycardSignPinless(kc, data)
 	}
+	algo = strings.ToLower(algo)
+	if tweak != nil {
+		if algo != "schnorr" {
+			return nil, fmt.Errorf("--tweak can only be used with --algo schnorr")
+		}
+		if path == "" {
+			return nil, fmt.Errorf("--tweak requires --path to be specified")
+		}
+		return doKeycardSignBIP341Schnorr(kc, data, tweak, path)
+	}
 	if path != "" {
-		switch strings.ToLower(algo) {
+		switch algo {
 		case "schnorr":
 			return doKeycardSignWithPathAndAlgo(kc, data, path, keycard.P2SignBIP340Schnorr)
 		default:
 			return doKeycardSignWithPath(kc, data, path)
 		}
 	}
-	if strings.ToLower(algo) == "schnorr" {
+	if algo == "schnorr" {
 		return nil, fmt.Errorf("--algo schnorr requires --path to be specified")
 	}
 	return doKeycardSign(kc, data)
