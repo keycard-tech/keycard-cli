@@ -130,17 +130,20 @@ jobs:
           [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
           [ "$DRAFT" = "true" ] && flags+=(--draft)
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # This job has no checkout (it only downloads artifacts), so gh cannot
+          # infer the repository from .git: every call needs an explicit --repo.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists, refreshing its assets"
           else
             gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "$TAG" \
               --generate-notes \
               "${flags[@]}"
           fi
 
-          gh release upload "$TAG" assets/* --clobber
+          gh release upload "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Summary
         env:
@@ -157,4 +160,4 @@ jobs:
             echo 'sha256sum -c SHA256SUMS   # after downloading the binaries + SHA256SUMS'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          gh release view "$TAG"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY"
