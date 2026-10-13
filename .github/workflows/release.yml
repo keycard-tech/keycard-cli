@@ -1,0 +1,160 @@
+name: release
+
+# Publishes pre-built binaries for every platform on a GitHub release.
+#
+#   git tag v4.1.0 && git push origin v4.1.0     # cut a release
+#
+# It can also be run from the Actions tab ("Run workflow") to rebuild the assets
+# of an existing release, or to cut a pre-release: pass the `tag` input, and
+# optionally `prerelease` / `draft`. The tag is created at the selected commit if
+# it does not exist yet.
+#
+# Requires the workflow token to be able to write releases: Settings -> Actions
+# -> General -> Workflow permissions = "Read and write permissions" (this
+# workflow only requests `contents: write`, on the release job).
+
+"on":
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish under, e.g. v4.1.0 (created at the selected commit if missing)"
+        type: string
+        required: false
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        required: false
+        default: false
+      draft:
+        description: "Publish as a draft release"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      # Always the ref selected for this run (a tag push, or whatever ref is
+      # picked in the "Run workflow" picker). The `tag` input only names the
+      # release, so a not-yet-existing tag cannot break the checkout.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Resolve tag and version
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [ -n "$tag" ]; then
+            version="${tag#v}"
+          else
+            # No tag (e.g. a manual run on a branch): still build installable
+            # assets, just with a development version string.
+            version="$(cat VERSION)-$(git rev-parse --short=7 HEAD)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag: ${tag:-<none>} version: $version"
+
+  build:
+    needs: meta
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.meta.outputs.version }}
+
+  release:
+    name: publish
+    needs: [meta, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          # Flatten: one artifact per platform, each holding a single binary.
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -eu
+          if [ ! -d assets ] || [ -z "$(ls -A assets 2>/dev/null)" ]; then
+            echo "::error::no build artifacts found - did the build job fail?"
+            exit 1
+          fi
+          cd assets
+          # Skip SHA256SUMS itself, so re-running this job stays correct.
+          files=()
+          for f in *; do
+            [ "$f" = SHA256SUMS ] || files+=("$f")
+          done
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -eu
+          if [ -z "$TAG" ]; then
+            echo "::error::no release tag - push a v* tag or pass the 'tag' input"
+            exit 1
+          fi
+
+          flags=()
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          [ "$DRAFT" = "true" ] && flags+=(--draft)
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, refreshing its assets"
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --generate-notes \
+              "${flags[@]}"
+          fi
+
+          gh release upload "$TAG" assets/* --clobber
+
+      - name: Summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          assets="$(cd assets && for f in *; do printf '%s ' "$f"; done)"
+          {
+            echo "## keycard $TAG"
+            echo
+            echo "Assets: $assets"
+            echo
+            echo '```bash'
+            echo 'sha256sum -c SHA256SUMS   # after downloading the binaries + SHA256SUMS'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG"

@@ -1,0 +1,186 @@
+name: build
+
+# Builds one keycard binary per platform and uploads them as workflow artifacts.
+# Called by ci.yml (verification) and release.yml (publishing), so the platform
+# matrix lives in exactly one place.
+#
+# Why the matrix looks like this:
+#
+# The PC/SC bindings (github.com/ebfe/scard) are cgo on Linux and macOS:
+#   - linux   needs pkg-config + libpcsclite headers
+#   - darwin  needs the PCSC framework, which ships with the macOS SDK
+# so both must be built natively on their own runners; there is no way to
+# cross-compile them with CGO_ENABLED=0 (the build simply fails).
+#
+# The Windows backend of scard is pure Go - it calls winscard.dll through
+# syscall - so the .exe files are cross-compiled from Linux with CGO_ENABLED=0
+# and no Windows runner is needed.
+
+"on":
+  workflow_call:
+    inputs:
+      version:
+        description: "Value for main.version; defaults to VERSION-<short-sha>"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      # A single broken platform must not throw away the binaries that built fine.
+      fail-fast: false
+      matrix:
+        include:
+          - asset: keycard-linux-amd64
+            goos: linux
+            goarch: amd64
+            runs-on: ubuntu-24.04
+            cgo: "1"
+            cc: gcc
+            pcsclite: true
+            native: true
+            # Strings that `file` must report for the produced binary, so a
+            # mis-tagged or accidentally native-only build fails the job.
+            expect: x86-64
+
+          - asset: keycard-linux-arm64
+            goos: linux
+            goarch: arm64
+            runs-on: ubuntu-24.04-arm
+            cgo: "1"
+            cc: gcc
+            pcsclite: true
+            native: true
+            expect: aarch64
+
+          - asset: keycard-darwin-arm64
+            goos: darwin
+            goarch: arm64
+            runs-on: macos-latest
+            cgo: "1"
+            cc: clang
+            native: true
+            expect: arm64
+
+          - asset: keycard-darwin-amd64
+            goos: darwin
+            goarch: amd64
+            # Cross-built for Intel Macs from the arm64 runner using the
+            # universal macOS SDK. If this ever breaks, switch to an Intel
+            # runner (macos-13) and drop the -arch flags.
+            runs-on: macos-latest
+            cgo: "1"
+            cc: clang -arch x86_64
+            cgo_cflags: -arch x86_64
+            cgo_ldflags: -arch x86_64
+            native: false
+            rosetta: true
+            expect: x86_64
+
+          - asset: keycard-windows-amd64
+            goos: windows
+            goarch: amd64
+            runs-on: ubuntu-24.04
+            cgo: "0"
+            ext: .exe
+            expect: x86-64
+
+          - asset: keycard-windows-arm64
+            goos: windows
+            goarch: arm64
+            runs-on: ubuntu-24.04
+            cgo: "0"
+            ext: .exe
+            expect: ARM64
+
+    steps:
+      # The caller's ref: a tag push for releases, the selected branch for CI.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-go@v5
+        with:
+          # go.mod is the single source of truth for the Go version.
+          go-version-file: go.mod
+
+      - name: Install PC/SC development headers
+        if: matrix.pcsclite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpcsclite-dev pkg-config
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ]; then
+            version="$(cat VERSION)-$(git rev-parse --short=7 HEAD)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Embedding version $version"
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+          CC: ${{ matrix.cc }}
+          CGO_CFLAGS: ${{ matrix.cgo_cflags }}
+          CGO_LDFLAGS: ${{ matrix.cgo_ldflags }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ASSET: ${{ matrix.asset }}${{ matrix.ext }}
+        run: |
+          set -eu
+          mkdir -p dist
+          # Rows that need no C toolchain omit `cc`, which reaches us as an empty
+          # variable; unset it so go picks its own default compiler.
+          if [ -z "${CC:-}" ]; then
+            unset CC
+          fi
+          # -buildvcs=false keeps the build independent of the checkout depth.
+          go build -trimpath -buildvcs=false \
+            -ldflags "-s -w -X main.version=$VERSION" \
+            -o "dist/$ASSET" .
+
+      - name: Check architecture
+        env:
+          ASSET: ${{ matrix.asset }}${{ matrix.ext }}
+          EXPECT: ${{ matrix.expect }}
+        run: |
+          set -eu
+          file -b "dist/$ASSET" | tee /dev/stderr | grep -q "$EXPECT" \
+            || { echo "::error::dist/$ASSET is not $EXPECT"; exit 1; }
+
+      - name: Smoke test
+        # Only when the artifact actually runs on this runner.
+        if: matrix.native
+        env:
+          ASSET: ${{ matrix.asset }}${{ matrix.ext }}
+        run: ./dist/"$ASSET" version
+
+      - name: Smoke test through Rosetta
+        # The Intel build cannot run natively on an arm64 runner. Rosetta is
+        # preinstalled there, but this is a bonus check: the strict verification
+        # is the architecture check above.
+        if: matrix.rosetta
+        continue-on-error: true
+        env:
+          ASSET: ${{ matrix.asset }}${{ matrix.ext }}
+        run: arch -x86_64 ./dist/"$ASSET" version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

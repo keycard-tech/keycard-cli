@@ -5,6 +5,8 @@
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Building from Source](#building-from-source)
+- [Releases](#releases)
+- [Cutting a Release](#cutting-a-release)
 - [Global Flags](#global-flags)
 - [Environment Variables](#environment-variables)
 - [CLI Commands](#cli-commands)
@@ -28,6 +30,23 @@
 
 Download the pre-built binary for your platform from the [releases page](https://github.com/keycard-tech/keycard-cli/releases) and rename the file to `keycard`, removing the platform-specific suffix.
 
+| Asset | Runs on | Runtime requirements |
+|-------|---------|----------------------|
+| `keycard-linux-amd64` | Linux, x86_64 | `pcscd` and `libpcsclite.so.1`; built on Ubuntu 24.04, so it needs glibc >= 2.39 |
+| `keycard-linux-arm64` | Linux, aarch64 | same as above |
+| `keycard-darwin-arm64` | Apple Silicon Macs | none (PC/SC ships with macOS) |
+| `keycard-darwin-amd64` | Intel Macs | none |
+| `keycard-windows-amd64.exe` | Windows 10/11, x86_64 | none (`winscard.dll` is part of Windows) |
+| `keycard-windows-arm64.exe` | Windows on Arm | none |
+
+Every release carries a `SHA256SUMS` file covering all assets. Verify after downloading:
+
+```bash
+sha256sum -c SHA256SUMS      # in the directory holding the binaries
+```
+
+On Linux, install the PC/SC runtime if it is missing (Debian/Ubuntu: `apt install libpcsclite1 pcscd`).
+
 ## Building from Source
 
 ```bash
@@ -40,6 +59,57 @@ To run tests:
 ```bash
 make test
 ```
+
+Building needs a C toolchain and the PC/SC headers, because the smart card
+bindings are cgo: Debian/Ubuntu `libpcsclite-dev`, Fedora `pcsc-lite-devel`,
+Arch `pcsc-lite`, macOS needs only the Xcode command line tools (the PCSC
+framework is part of the SDK).
+
+To produce a release-named binary plus checksums in `dist/`:
+
+```bash
+make dist
+```
+
+## Releases
+
+Binaries for all supported platforms are built and published by GitHub Actions:
+
+- **`.github/workflows/ci.yml`** runs on pull requests: formatting, `go vet`, tests, plus a compile of every release target so cross-platform breakage surfaces before it is tagged.
+- **`.github/workflows/build.yml`** is a reusable workflow holding the platform matrix; both CI and the release call it, so the matrix exists only once.
+- **`.github/workflows/release.yml`** runs on `v*` tags and publishes the GitHub release with all assets and `SHA256SUMS`.
+
+The matrix is dictated by cgo, not by preference:
+
+| Platform | Runner | CGO | Why |
+|----------|--------|-----|-----|
+| linux/amd64, linux/arm64 | `ubuntu-24.04`, `ubuntu-24.04-arm` | on | `scard` binds `libpcsclite` through cgo, so it must be built natively on each architecture |
+| darwin/arm64 | `macos-latest` | on | links the PCSC framework from the macOS SDK, so it must run on a Mac |
+| darwin/amd64 | `macos-latest` | on | cross-built for Intel with `clang -arch x86_64` against the universal SDK |
+| windows/amd64, windows/arm64 | `ubuntu-24.04` | off | the Windows backend of `scard` is pure Go (`winscard.dll` via `syscall`), so no Windows runner or MinGW toolchain is needed |
+
+## Cutting a Release
+
+1. Bump `VERSION` (the value is embedded in the binary and shown by `keycard version`).
+2. Tag and push:
+
+   ```bash
+   git tag v4.0.1
+   git push origin v4.0.1
+   ```
+
+   The workflow strips the leading `v`, so `v4.0.1` produces `keycard version 4.0.1`.
+
+3. Watch it in the Actions tab; the release appears with all six binaries, `SHA256SUMS`, and auto-generated release notes.
+
+The same workflow can be started manually (Actions -> Release -> Run workflow) to rebuild the assets of an existing release or to publish a pre-release: pass the `tag` input, and optionally `prerelease` / `draft`. A missing tag is created at the selected commit.
+
+> The publishing job needs write access to releases. If your organisation keeps
+> the workflow token read-only, enable **Settings -> Actions -> General ->
+> Workflow permissions -> Read and write permissions** (the job only asks for
+> `contents: write`).
+
+The `make build-platforms` / `make release` targets (xgo plus `github-release`) are the old Jenkins-era path and are kept for reference only; note that `make release` deletes and recreates the release with the given tag.
 
 ## Global Flags
 

@@ -1,4 +1,4 @@
-.PHONY: test build
+.PHONY: test build dist
 
 # This can be changed by exporting an env variable
 XGO_TARGETS ?= linux/amd64,windows/amd64,darwin/amd64
@@ -34,9 +34,41 @@ build:
 test:
 	go test -v ./...
 
+# Release binaries for all platforms are produced by .github/workflows/release.yml
+# (push a v* tag, or run it manually from the Actions tab). `dist` builds a single
+# artifact with the same naming convention, for the host platform by default:
+#
+#	make dist GOOS_TARGET=linux GOARCH_TARGET=arm64
+#
+# Only windows targets can be cross-compiled here (scard's Windows backend is
+# pure Go, so CGO is switched off for them); Linux and macOS need cgo and are
+# therefore built natively by the workflow.
+DIST_DIR ?= $(dir $(realpath $(firstword $(MAKEFILE_LIST))))dist
+GOOS_TARGET ?= $(shell go env GOOS)
+GOARCH_TARGET ?= $(shell go env GOARCH)
+
+dist:
+	@mkdir -p $(DIST_DIR)
+	@name="$(BIN_NAME)-$(GOOS_TARGET)-$(GOARCH_TARGET)"; cgo=1; \
+	case "$(GOOS_TARGET)" in \
+		windows) name="$$name.exe"; cgo=0 ;; \
+		linux) pkg-config --exists libpcsclite \
+			|| { echo "missing libpcsclite development headers (install libpcsclite-dev)"; exit 1; } ;; \
+	esac; \
+	echo "building $$name (cgo=$$cgo)"; \
+	CGO_ENABLED=$$cgo GOOS=$(GOOS_TARGET) GOARCH=$(GOARCH_TARGET) \
+		go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$(VERSION)" \
+			-o "$(DIST_DIR)/$$name" .; \
+	cd "$(DIST_DIR)" && files=(); for f in *; do \
+		[ "$$f" = SHA256SUMS ] || files+=("$$f"); \
+	done; sha256sum -- "$${files[@]}" > SHA256SUMS
+	@echo "artifacts in $(DIST_DIR):" && ls -1 $(DIST_DIR)
+
 docker-image:
 	cd _assets/docker && $(MAKE) push
 
+# Legacy: xgo cross-compilation is superseded by .github/workflows/release.yml,
+# which builds every platform natively. Kept for reference only.
 build-platforms:
 	xgo \
 		-ldflags="-X main.version=$(VERSION)" \
