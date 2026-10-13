@@ -114,6 +114,15 @@ By default, the keycard and ident applets are installed. Control which applets g
 | `--ndef-applet` | `false` | Install NDEF applet |
 | `--force` / `-f` | | Force reinstallation if already installed |
 | `--ndef <url>` | | URL for the NDEF record (supports `{{.cashAddress}}` variable) |
+| `--load-math <path>` | | Load the keycard-math-soft library package from this `cap` file |
+
+The Keycard package depends on the [keycard-math-soft](https://github.com/keycard-tech/keycard-math-soft) library package (AID `A0000008040002`), which must be loaded on the card. Load it together with the Keycard package:
+
+```bash
+keycard install --applet-file PATH_TO_CAP_FILE --load-math PATH_TO_MATH_CAP_FILE
+```
+
+The flag is optional: leave it out if the math package is already loaded on the card (it only needs to be loaded once). If the install fails and the math package was not loaded, the CLI reminds you that it might be missing.
 
 #### `delete`
 
@@ -122,6 +131,12 @@ By default, the keycard and ident applets are installed. Control which applets g
 ```bash
 keycard delete --yes
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--remove-math` | `false` | Also remove the keycard-math-soft library package |
+
+The math package is kept by default, since other applets may depend on it. Pass `--remove-math` for a full wipe; it is removed after the Keycard package, which depends on it.
 
 #### `init`
 

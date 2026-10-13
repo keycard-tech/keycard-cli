@@ -71,10 +71,12 @@ keycard set-name --name "My Card"                  # Set display name
 > **These commands only work on blank cards or development builds.** On production cards, GlobalPlatform restrictions prevent installing or deleting applets. To re-provision a production card, use `factory-reset` followed by `init` and `generate-mnemonic --save` (or `load-seed`).
 
 ```bash
-keycard install -a <cap-file> [--keycard-applet] [--ident-applet] [--cash-applet] [--ndef-applet] [-f] [--ndef <url>]
+keycard install -a <cap-file> [--keycard-applet] [--ident-applet] [--cash-applet] [--ndef-applet] [-f] [--ndef <url>] [--load-math <math-cap-file>]
 ```
 
 Install applets from a CAP file. By default installs keycard + ident applets. Use `-f` to force reinstallation. Use `--ndef <url>` to set an NDEF record (supports `{{.cashAddress}}` variable).
+
+The keycard package depends on the [keycard-math-soft](https://github.com/keycard-tech/keycard-math-soft) library package (AID `A0000008040002`), which must be loaded on the card before it. `--load-math <math-cap-file>` loads it in the same run; omit it if the package is already on the card (loading is needed only once — re-loading is skipped). If the install fails with a load/install error and `--load-math` was not passed, the error carries a hint that the math package may be missing.
 
 Use this when building your own card image or working with a blank/development card.
 
@@ -91,7 +93,10 @@ Initialize the card and generate authentication secrets. If PIN/PUK are omitted,
 ```bash
 keycard factory-reset --yes                        # Erase all card data (works on all cards)
 keycard delete --yes                               # Remove all applets (development/blank cards only)
+keycard delete --yes --remove-math                 # Also remove the keycard-math-soft package
 ```
+
+`--remove-math` additionally deletes the keycard-math-soft library package (AID `A0000008040002`), which `delete` otherwise keeps. It is removed after the keycard package, which depends on it. You need it again on the next `install` (via `--load-math`) unless it is reloaded.
 
 `factory-reset` is the standard way to wipe a card. It works on all cards including production cards and resets the applet to factory state without removing it.
 
@@ -278,8 +283,9 @@ See `_shell-commands-examples/` in the project for full examples.
 > These steps assume a blank or development card where `install` is permitted. For production cards that already have applets, skip the install step and start from `factory-reset` or `init`.
 
 ```bash
-# 1. Install applets (blank/dev cards only)
-keycard install --applet-file keycard_v4.cap --force --yes
+# 1. Install applets, loading the math package the keycard package needs
+#    (blank/dev cards only; drop --load-math if the card already has it)
+keycard install --applet-file keycard_v4.cap --load-math keycard-math-soft.cap --force --yes
 
 # 2. Load identity certificate (mandatory after install, dev cards only)
 keycard load-ident --test
@@ -351,6 +357,7 @@ EOF
 | `reader not found: <name> (available: ...)` | Bad `--reader` name | Check reader name; omit `--reader` to auto-detect |
 | *(blocks indefinitely)* | Reader present but no card inserted | Insert the card. Use a timeout when scripting. |
 | `keycard applet not installed. Run 'keycard install' first` | Card is blank or applets were deleted | Run `keycard install` |
+| load/install fails with `6a88` (plus a math hint) | keycard-math-soft package missing | Re-run `keycard install` with `--load-math <math-cap-file>` (get it from [keycard-math-soft](https://github.com/keycard-tech/keycard-math-soft)) |
 | `wrong pin. remaining attempts: N` | Wrong PIN | Check `KEYCARD_PIN`; note remaining attempts |
 | `wrong pin. remaining attempts: 0` | PIN blocked (too many failed attempts) | Use `keycard unblock-pin` (set all secrets through env) |
 | `cannot open secure channel without pairing` | Pairing issue (V1) | Re-pair or check `--pairing-password` / `KEYCARD_PAIRING_PASSWORD` |

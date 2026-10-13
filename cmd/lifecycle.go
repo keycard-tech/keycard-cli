@@ -66,10 +66,24 @@ func LifecycleCommands() []*cli.Command {
 					Name:  "ndef",
 					Usage: "Specify a URL to use in the NDEF record. Use {{.cashAddress}} variable for cash address.",
 				},
+				&cli.StringFlag{
+					Name:  "load-math",
+					Usage: "keycard-math-soft cap file path. The keycard package depends on that library package; omit if it is already loaded on the card",
+				},
 			},
 			Action: cmdInstall,
 		},
-		{Name: "delete", Usage: "Delete applets from the card", Action: cmdDelete},
+		{
+			Name:  "delete",
+			Usage: "Delete applets from the card",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "remove-math",
+					Usage: "also remove the keycard-math-soft library package",
+				},
+			},
+			Action: cmdDelete,
+		},
 		{
 			Name:  "init",
 			Usage: "Initialize the card",
@@ -154,20 +168,44 @@ func cmdInstall(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer cleanup()
 
-	capFile := cmd.String("applet-file")
-	f, err := os.Open(capFile)
+	opts := &internal.InstallOptions{
+		OverwriteApplet:    cmd.Bool("force"),
+		InstallKeycard:     cmd.Bool("keycard-applet"),
+		InstallIdent:       cmd.Bool("ident-applet"),
+		InstallCash:        cmd.Bool("cash-applet"),
+		InstallNDEF:        cmd.Bool("ndef-applet"),
+		NDEFRecordTemplate: cmd.String("ndef"),
+	}
+
+	f, err := os.Open(cmd.String("applet-file"))
 	if err != nil {
 		return fmt.Errorf("error opening cap file: %w", err)
 	}
 	defer f.Close()
+	opts.CapFile = f
+
+	// Optional: loading the math package the keycard package depends on is only
+	// needed once per card, so it is skipped when the flag is not passed.
+	if mathCapFilePath := cmd.String("load-math"); mathCapFilePath != "" {
+		mathCapFile, err := os.Open(mathCapFilePath)
+		if err != nil {
+			return fmt.Errorf("error opening math cap file: %w", err)
+		}
+		defer mathCapFile.Close()
+		opts.MathCapFile = mathCapFile
+	}
 
 	i := internal.NewInstaller(card)
-	return i.Install(f, cmd.Bool("force"), cmd.Bool("keycard-applet"), cmd.Bool("ident-applet"), cmd.Bool("cash-applet"), cmd.Bool("ndef-applet"), cmd.String("ndef"))
+	return i.Install(opts)
 }
 
 func cmdDelete(ctx context.Context, cmd *cli.Command) error {
 	if !cmd.Bool("yes") {
-		fmt.Print("This will delete all applets from the card. Continue? (y/N): ")
+		msg := "This will delete all applets from the card."
+		if cmd.Bool("remove-math") {
+			msg += " The keycard-math-soft package will be removed too."
+		}
+		fmt.Printf("%s Continue? (y/N): ", msg)
 		var resp string
 		fmt.Scanln(&resp)
 		if resp != "y" && resp != "Y" {
@@ -182,7 +220,7 @@ func cmdDelete(ctx context.Context, cmd *cli.Command) error {
 	defer cleanup()
 
 	i := internal.NewInstaller(card)
-	if err := i.Delete(); err != nil {
+	if err := i.Delete(cmd.Bool("remove-math")); err != nil {
 		return err
 	}
 
