@@ -45,9 +45,11 @@ jobs:
             cc: gcc
             pcsclite: true
             native: true
-            # Strings that `file` must report for the produced binary, so a
-            # mis-tagged or accidentally native-only build fails the job.
-            expect: x86-64
+            # Architecture assertion. Case-insensitive extended regex, because
+            # `file` spells the same architecture differently across versions
+            # ("ARM64" vs "Aarch64") and formats ("x86-64" for ELF/PE, "x86_64"
+            # for Mach-O). A wrong-architecture build still fails the job.
+            expect: x86[-_]64
 
           - asset: keycard-linux-arm64
             goos: linux
@@ -57,7 +59,7 @@ jobs:
             cc: gcc
             pcsclite: true
             native: true
-            expect: aarch64
+            expect: arm64|aarch64
 
           - asset: keycard-darwin-arm64
             goos: darwin
@@ -66,7 +68,7 @@ jobs:
             cgo: "1"
             cc: clang
             native: true
-            expect: arm64
+            expect: arm64|aarch64
 
           - asset: keycard-darwin-amd64
             goos: darwin
@@ -81,7 +83,7 @@ jobs:
             cgo_ldflags: -arch x86_64
             native: false
             rosetta: true
-            expect: x86_64
+            expect: x86[-_]64
 
           - asset: keycard-windows-amd64
             goos: windows
@@ -89,7 +91,7 @@ jobs:
             runs-on: ubuntu-24.04
             cgo: "0"
             ext: .exe
-            expect: x86-64
+            expect: x86[-_]64
 
           - asset: keycard-windows-arm64
             goos: windows
@@ -97,7 +99,7 @@ jobs:
             runs-on: ubuntu-24.04
             cgo: "0"
             ext: .exe
-            expect: ARM64
+            expect: arm64|aarch64
 
     steps:
       # The caller's ref: a tag push for releases, the selected branch for CI.
@@ -158,8 +160,8 @@ jobs:
           EXPECT: ${{ matrix.expect }}
         run: |
           set -eu
-          file -b "dist/$ASSET" | tee /dev/stderr | grep -q "$EXPECT" \
-            || { echo "::error::dist/$ASSET is not $EXPECT"; exit 1; }
+          file -b "dist/$ASSET" | tee /dev/stderr | grep -qiE "$EXPECT" \
+            || { echo "::error::dist/$ASSET does not match architecture /$EXPECT/i"; exit 1; }
 
       - name: Smoke test
         # Only when the artifact actually runs on this runner.
