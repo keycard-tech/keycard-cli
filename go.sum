@@ -16,6 +16,8 @@ github.com/hsanjuan/go-ndef v0.0.1 h1:un1E9jEVa0t8j33qT2JFfseOAI3MikbrkmMEn9Lx0W
 github.com/hsanjuan/go-ndef v0.0.1/go.mod h1:LqYM55xXg5wubrxucAxkuK8nW+wjFCCZNyfsd9lPR+Q=
 github.com/keycard-tech/keycard-go/v4 v4.0.2 h1:GVqacX0WvgPnosmk4/YmYN6tJsw0WGl5lPrHXk4llOw=
 github.com/keycard-tech/keycard-go/v4 v4.0.2/go.mod h1:VXOT8+8S2DRW2u+eX8gbV7dgiSjxDNs2mzifu7UY620=
+github.com/keycard-tech/keycard-go/v4 v4.0.3 h1:Gg57F8sENl9qpafUtaqB00F+HczqKwqxj+/AIwD3oRk=
+github.com/keycard-tech/keycard-go/v4 v4.0.3/go.mod h1:VXOT8+8S2DRW2u+eX8gbV7dgiSjxDNs2mzifu7UY620=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

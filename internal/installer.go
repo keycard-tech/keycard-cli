@@ -29,6 +29,7 @@ var MathPackageAID = []byte{0xA0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x02}
 const (
 	swFileExists           = 0x6A89
 	swReferencedNameExists = 0x6A8A
+	swConditionsOfUseNotSatisfied = 0x6985
 )
 
 func mathPackageHint() string {
@@ -57,32 +58,36 @@ func swOf(err error) (uint16, bool) {
 
 // Installer defines a struct with methods to install applets in a card.
 type Installer struct {
-	c types.Channel
+	c         types.Channel
+	gpOptions []globalplatform.Option
 }
 
-// NewInstaller returns a new Installer that communicates to Transmitter t.
-func NewInstaller(t keycardio.Transmitter) *Installer {
+// NewInstaller returns a new Installer that communicates to Transmitter t. The options
+// configure the GlobalPlatform secure channel; with none the public development key
+// sets of keycard-go are offered.
+func NewInstaller(t keycardio.Transmitter, gpOptions ...globalplatform.Option) *Installer {
 	return &Installer{
-		c: keycardio.NewNormalChannel(t),
+		c:         keycardio.NewNormalChannel(t),
+		gpOptions: gpOptions,
 	}
 }
 
 // InstallOptions holds the parameters for [Installer.Install].
 type InstallOptions struct {
-	CapFile *os.File
-	MathCapFile *os.File
-	OverwriteApplet bool
-	InstallKeycard  bool
-	InstallIdent    bool
-	InstallCash     bool
-	InstallNDEF     bool
+	CapFile            *os.File
+	MathCapFile        *os.File
+	OverwriteApplet    bool
+	InstallKeycard     bool
+	InstallIdent       bool
+	InstallCash        bool
+	InstallNDEF        bool
 	NDEFRecordTemplate string
 }
 
 func (i *Installer) Install(opts *InstallOptions) error {
 	installerLogger.Info("installation started")
 	startTime := time.Now()
-	cmdSet := globalplatform.NewCommandSet(i.c)
+	cmdSet := globalplatform.NewCommandSet(i.c, i.gpOptions...)
 
 	mathLoaded := opts.MathCapFile != nil
 
@@ -190,7 +195,7 @@ func (i *Installer) Install(opts *InstallOptions) error {
 }
 
 func (i *Installer) Delete(removeMath bool) error {
-	cmdSet := globalplatform.NewCommandSet(i.c)
+	cmdSet := globalplatform.NewCommandSet(i.c, i.gpOptions...)
 
 	installerLogger.Info("select ISD")
 	err := cmdSet.Select()
@@ -228,12 +233,18 @@ func (i *Installer) loadMathPackage(cmdSet *globalplatform.CommandSet, capFile *
 	}
 
 	if err := cmdSet.LoadPackage(capFile, MathPackageAID, callback); err != nil {
-		if sw, ok := swOf(err); ok && (sw == swFileExists || sw == swReferencedNameExists) {
+		sw, _ := swOf(err)
+		switch {
+		case sw == swFileExists || sw == swReferencedNameExists:
 			installerLogger.Info("math package already loaded, skipping")
 			return nil
+		case sw == swConditionsOfUseNotSatisfied:
+			installerLogger.Warn("math package load refused with the catch-all status word, assuming it is already loaded and continuing", "error", err)
+			return nil
+		default:
+			installerLogger.Error("loading math package failed", "error", err)
+			return fmt.Errorf("loading math package: %w", err)
 		}
-		installerLogger.Error("loading math package failed", "error", err)
-		return fmt.Errorf("loading math package: %w", err)
 	}
 
 	return nil
@@ -243,12 +254,18 @@ func (i *Installer) deleteMathPackage(cmdSet *globalplatform.CommandSet) error {
 	installerLogger.Info("deleting math package", "aid", mathPackageAIDString())
 
 	if err := cmdSet.DeleteObject(MathPackageAID); err != nil {
-		if sw, ok := swOf(err); ok && (sw == globalplatform.SwFileNotFound || sw == globalplatform.SwReferencedDataNotFound) {
+		sw, _ := swOf(err)
+		switch {
+		case sw == globalplatform.SwFileNotFound || sw == globalplatform.SwReferencedDataNotFound:
 			installerLogger.Info("math package not present, nothing to delete")
 			return nil
+		case sw == swConditionsOfUseNotSatisfied:
+			installerLogger.Warn("math package delete refused with the catch-all status word, assuming there was nothing to delete", "error", err)
+			return nil
+		default:
+			installerLogger.Error("deleting math package failed", "error", err)
+			return fmt.Errorf("deleting math package: %w", err)
 		}
-		installerLogger.Error("deleting math package failed", "error", err)
-		return fmt.Errorf("deleting math package: %w", err)
 	}
 
 	return nil
@@ -290,20 +307,14 @@ func (i *Installer) checkAppletAlreadyInstalled(cmdSet *globalplatform.CommandSe
 		return err
 	}
 
-	err = cmdSet.SelectAID(keycardInstanceAID)
-	switch e := err.(type) {
-	case *apdu.ErrBadResponse:
-		// keycard applet not found, so not installed yet.
-		if e.Sw == globalplatform.SwFileNotFound {
-			return nil
-		}
-		return err
-	case nil: // selected successfully, so it's already installed
-		if overwriteApplet {
-			return nil
-		}
-		return ErrAppletAlreadyInstalled
-	default:
-		return err
+	if err := cmdSet.SelectAID(keycardInstanceAID); err != nil {
+		installerLogger.Debug("keycard instance not selectable", "error", err)
+		return nil
 	}
+
+	if overwriteApplet {
+		return nil
+	}
+
+	return ErrAppletAlreadyInstalled
 }

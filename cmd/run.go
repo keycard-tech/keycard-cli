@@ -115,6 +115,11 @@ func runCard(cmd *cli.Command, level AuthLevel, fn func(kc *keycard.CommandSet, 
 // runGP connects to the card, creates a GlobalPlatform CommandSet, opens a GP
 // secure channel, then executes fn.
 func runGP(cmd *cli.Command, fn func(gp *globalplatform.CommandSet, cmd *cli.Command) error) error {
+	gpOpts, err := gpChannelOptions(cmd)
+	if err != nil {
+		return err
+	}
+
 	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
 	if err != nil {
 		return err
@@ -122,13 +127,17 @@ func runGP(cmd *cli.Command, fn func(gp *globalplatform.CommandSet, cmd *cli.Com
 	defer cleanup()
 
 	ch := keycardio.NewNormalChannel(card)
-	gp := globalplatform.NewCommandSet(ch)
+	gp := globalplatform.NewCommandSet(ch, gpOpts...)
 
 	if err := gp.OpenSecureChannel(); err != nil {
 		return err
 	}
 
 	return fn(gp, cmd)
+}
+
+func gpChannelOptions(cmd *cli.Command) ([]globalplatform.Option, error) {
+	return internal.GPKeyOptions(cmd.String("gp-mac-key"))
 }
 
 // runCash connects to the card, creates a Cash CommandSet, selects the Cash

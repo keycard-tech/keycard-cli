@@ -72,3 +72,42 @@ func TestSwOf(t *testing.T) {
 		t.Fatal("swOf() must report false for errors without a status word")
 	}
 }
+
+// fakeChannel answers every command with a fixed status word.
+type fakeChannel struct {
+	sw uint16
+}
+
+func (c fakeChannel) Send(*apdu.Command) (*apdu.Response, error) {
+	return &apdu.Response{Sw: c.sw}, nil
+}
+
+func TestCheckAppletAlreadyInstalled(t *testing.T) {
+	tests := []struct {
+		name      string
+		sw        uint16
+		overwrite bool
+		wantErr   error
+	}{
+		{"selectable", apdu.SwOK, false, ErrAppletAlreadyInstalled},
+		{"selectable with force", apdu.SwOK, true, nil},
+		{"file not found", globalplatform.SwFileNotFound, false, nil},
+		// A missing instance is reported with status words that vary by card and
+		// applet version. None of them means installed, so none may stop an install
+		// from reaching the point where the package can be loaded.
+		{"conditions of use not satisfied", 0x6985, false, nil},
+		{"function not available", 0x6A81, false, nil},
+		{"record not found", 0x6A83, false, nil},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			installer := &Installer{}
+			cmdSet := globalplatform.NewCommandSet(fakeChannel{sw: test.sw})
+
+			if err := installer.checkAppletAlreadyInstalled(cmdSet, test.overwrite); !errors.Is(err, test.wantErr) {
+				t.Fatalf("checkAppletAlreadyInstalled() = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}

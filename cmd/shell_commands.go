@@ -178,7 +178,11 @@ func shellGPOpenSecureChannel(ctx *shellCtx, _ []string) (*shellOutput, error) {
 	if err := ctx.gp.OpenSecureChannel(); err != nil {
 		return nil, err
 	}
-	return newShellOutput(ActionResult{Message: "GP secure channel opened"}, ctx.showSecrets), nil
+	message := "GP secure channel opened"
+	if session := ctx.gp.Session(); session != nil {
+		message = fmt.Sprintf("GP secure channel opened (SCP%02d)", session.Protocol())
+	}
+	return newShellOutput(ActionResult{Message: message}, ctx.showSecrets), nil
 }
 
 func shellGPDelete(ctx *shellCtx, args []string) (*shellOutput, error) {

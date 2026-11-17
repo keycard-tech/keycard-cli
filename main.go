@@ -103,6 +103,11 @@ func main() {
 				Usage:   "Whitelisted card identity public key (hex, 33 bytes compressed)",
 				Sources: cli.EnvVars("KEYCARD_WHITELIST_CARD"),
 			},
+			&cli.StringFlag{
+				Name:    "gp-mac-key",
+				Usage:   "GlobalPlatform secure channel MAC key (hex, 16/24/32 bytes). Defaults to the public development keys",
+				Sources: cli.EnvVars("KEYCARD_GP_MAC_KEY"),
+			},
 			&cli.BoolFlag{
 				Name:  "show-secrets",
 				Usage: "Show secrets (PIN, PUK, pairing keys) in output. Hidden by default",

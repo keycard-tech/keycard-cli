@@ -148,7 +148,7 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 			// Applet not installed
 		} else {
 			if kc.AppInfo() == nil || !kc.AppInfo().Installed {
-				return selectErr
+				return fmt.Errorf("%w: make sure the keycard applet is installed and that an identity certificate has been loaded (keycard load-ident)", selectErr)
 			}
 		}
 	}
@@ -162,6 +162,11 @@ func cmdInfo(ctx context.Context, cmd *cli.Command) error {
 }
 
 func cmdInstall(ctx context.Context, cmd *cli.Command) error {
+	gpOpts, err := gpChannelOptions(cmd)
+	if err != nil {
+		return err
+	}
+
 	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
 	if err != nil {
 		return err
@@ -195,11 +200,16 @@ func cmdInstall(ctx context.Context, cmd *cli.Command) error {
 		opts.MathCapFile = mathCapFile
 	}
 
-	i := internal.NewInstaller(card)
+	i := internal.NewInstaller(card, gpOpts...)
 	return i.Install(opts)
 }
 
 func cmdDelete(ctx context.Context, cmd *cli.Command) error {
+	gpOpts, err := gpChannelOptions(cmd)
+	if err != nil {
+		return err
+	}
+
 	if !cmd.Bool("yes") {
 		msg := "This will delete all applets from the card."
 		if cmd.Bool("remove-math") {
@@ -219,7 +229,7 @@ func cmdDelete(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer cleanup()
 
-	i := internal.NewInstaller(card)
+	i := internal.NewInstaller(card, gpOpts...)
 	if err := i.Delete(cmd.Bool("remove-math")); err != nil {
 		return err
 	}

@@ -39,6 +39,11 @@ func ShellCommand() *cli.Command {
 }
 
 func cmdShell(ctx context.Context, cmd *cli.Command) error {
+	gpOpts, err := gpChannelOptions(cmd)
+	if err != nil {
+		return err
+	}
+
 	card, cleanup, err := internal.ConnectToCard(cmd.String("reader"))
 	if err != nil {
 		return err
@@ -63,7 +68,7 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("error opening script file: %w", err)
 		}
 		defer f.Close()
-		return runShell(card, f, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
+		return runShell(card, f, cmd.Bool("json"), showSecrets, cmd, kcSecrets, gpOpts)
 	}
 
 	fi, err := os.Stdin.Stat()
@@ -71,13 +76,13 @@ func cmdShell(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("error checking stdin: %w", err)
 	}
 	if (fi.Mode() & os.ModeCharDevice) == 0 {
-		return runShell(card, os.Stdin, cmd.Bool("json"), showSecrets, cmd, kcSecrets)
+		return runShell(card, os.Stdin, cmd.Bool("json"), showSecrets, cmd, kcSecrets, gpOpts)
 	}
 
 	return errors.New("non-interactive shell. You must pipe commands or use -f flag")
 }
 
-func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bool, cmd *cli.Command, secrets *keycard.Secrets) error {
+func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bool, cmd *cli.Command, secrets *keycard.Secrets, gpOpts []globalplatform.Option) error {
 	ch := keycardio.NewNormalChannel(card)
 	kc, err := newCommandSet(ch, cmd)
 	if err != nil {
@@ -85,7 +90,7 @@ func runShell(card *scard.Card, input io.Reader, jsonOutput bool, showSecrets bo
 	}
 	cashKC := keycard.NewCashCommandSet(ch)
 	identKC := keycard.NewIdentCommandSet(ch)
-	gp := globalplatform.NewCommandSet(ch)
+	gp := globalplatform.NewCommandSet(ch, gpOpts...)
 
 	out := new(bytes.Buffer)
 	write := func(s string) { out.WriteString(s) }

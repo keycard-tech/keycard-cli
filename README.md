@@ -127,9 +127,20 @@ The following flags are available on all commands:
 | `--card-ca <hex>` | CA public key for V2 certificate verification (hex, 33 bytes compressed) |
 | `--test-card` | Shortcut for `--card-ca` with the test CA public key |
 | `--whitelist-card <hex>` | Whitelisted card identity public key (hex, 33 bytes compressed) |
+| `--gp-mac-key <hex>` | GlobalPlatform secure channel MAC key, for cards not using the public development keys (or `KEYCARD_GP_MAC_KEY` env var) |
 | `--show-secrets` | Show secrets (PIN, PUK, pairing keys) in output. Hidden by default |
 
-> **Security tip:** Passing credentials like `--pin`, `--puk`, `--pairing-password`, `--new`, or `--new-pin` on the command line exposes them in your shell history and `ps` output. Prefer using the `KEYCARD_PIN`, `KEYCARD_PUK`, `KEYCARD_PAIRING_PASSWORD`, `KEYCARD_NEW_PIN`, `KEYCARD_NEW_PUK`, and `KEYCARD_NEW_PAIRING_PASSWORD` environment variables instead.
+> **Security tip:** Passing credentials like `--pin`, `--puk`, `--pairing-password`, `--new`, `--new-pin`, or `--gp-mac-key` on the command line exposes them in your shell history and `ps` output. Prefer using the `KEYCARD_PIN`, `KEYCARD_PUK`, `KEYCARD_PAIRING_PASSWORD`, `KEYCARD_NEW_PIN`, `KEYCARD_NEW_PUK`, `KEYCARD_NEW_PAIRING_PASSWORD`, and `KEYCARD_GP_MAC_KEY` environment variables instead.
+
+### GlobalPlatform keys
+
+The commands that talk to the card's Security Domain — `install`, `delete`, and the `gp-*` shell commands — authenticate to it over a GlobalPlatform secure channel. The card reports whether it speaks SCP02 or SCP03, so the protocol is detected, not configured.
+
+By default the public development keys are offered: the Keycard development key and the GlobalPlatform default key. A card loaded with other keys needs `--gp-mac-key`:
+
+```bash
+keycard install --applet-file keycard.cap --gp-mac-key 00112233445566778899aabbccddeeff
+```
 
 ## Environment Variables
 
@@ -144,6 +155,7 @@ The following flags are available on all commands:
 | `KEYCARD_CARD_CA` | CA public key for V2 certificate verification |
 | `KEYCARD_TEST_CARD` | Use test card CA (boolean) |
 | `KEYCARD_WHITELIST_CARD` | Whitelisted card identity public key |
+| `KEYCARD_GP_MAC_KEY` | GlobalPlatform secure channel MAC key |
 
 ## CLI Commands
 
@@ -193,6 +205,8 @@ keycard install --applet-file PATH_TO_CAP_FILE --load-math PATH_TO_MATH_CAP_FILE
 ```
 
 The flag is optional: leave it out if the math package is already loaded on the card (it only needs to be loaded once). If the install fails and the math package was not loaded, the CLI reminds you that it might be missing.
+
+On a card whose Security Domain uses keys other than the public development ones, add `--gp-mac-key` (see [GlobalPlatform keys](#globalplatform-keys)).
 
 #### `delete`
 
